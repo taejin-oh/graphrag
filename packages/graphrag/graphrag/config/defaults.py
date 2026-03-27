@@ -276,6 +276,7 @@ class LocalSearchDefaults:
     experimental_context_max_tokens: int | None = None
     experimental_condition_id: str | None = None
     experimental_log_context_payload: bool = True
+    experimental_policy_preserve_mode: str = "fallback"
 
 
 @dataclass

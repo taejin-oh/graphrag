@@ -75,3 +75,7 @@ class LocalSearchConfig(BaseModel):
         description="Whether to emit structured JSON payload logs for experimental context mode.",
         default=graphrag_config_defaults.local_search.experimental_log_context_payload,
     )
+    experimental_policy_preserve_mode: str = Field(
+        description="Controls whether policy selection is strict or may include fallback candidates.",
+        default=graphrag_config_defaults.local_search.experimental_policy_preserve_mode,
+    )

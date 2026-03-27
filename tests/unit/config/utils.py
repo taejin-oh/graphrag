@@ -297,6 +297,10 @@ def assert_local_search_configs(
         actual.experimental_log_context_payload
         == expected.experimental_log_context_payload
     )
+    assert (
+        actual.experimental_policy_preserve_mode
+        == expected.experimental_policy_preserve_mode
+    )
 
 
 def assert_global_search_configs(

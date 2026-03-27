@@ -154,6 +154,7 @@ def test_leaf_detection_in_policy_inputs():
         report_by_community_id=report_map,
         max_tokens=10_000,
         token_counter=lambda _: 10,
+        preserve_mode="fallback",
     )
     assert "l1" in [report.community_id for report in result.selected_reports]
     assert "l2" in [report.community_id for report in result.selected_reports]
@@ -169,6 +170,7 @@ def test_policy_leaf_only_selection():
         report_by_community_id=report_map,
         max_tokens=25,
         token_counter=lambda _: 10,
+        preserve_mode="fallback",
     )
     selected_ids = [report.community_id for report in result.selected_reports]
     assert selected_ids[:2] == ["l1", "l2"]
@@ -184,6 +186,7 @@ def test_policy_leaf_then_parent_mix_replacement_and_warning():
         report_by_community_id=report_map,
         max_tokens=10,
         token_counter=lambda _: 10,
+        preserve_mode="fallback",
     )
     selected_ids = [report.community_id for report in result.selected_reports]
     assert selected_ids == ["p1"]
@@ -200,6 +203,7 @@ def test_policy_pyramid_selection_includes_leaf_first():
         report_by_community_id=report_map,
         max_tokens=30,
         token_counter=lambda _: 10,
+        preserve_mode="fallback",
     )
     selected_ids = [report.community_id for report in result.selected_reports]
     assert selected_ids[0] == "l1"
@@ -216,6 +220,7 @@ def test_policy_flat_ranked_selection():
         report_by_community_id=report_map,
         max_tokens=20,
         token_counter=lambda _: 10,
+        preserve_mode="fallback",
     )
     selected_ids = [report.community_id for report in result.selected_reports]
     assert selected_ids == ["l1", "l2"]
@@ -373,10 +378,15 @@ def test_logging_payload_contains_required_fields(monkeypatch):
     required_fields = {
         "condition_id",
         "community_policy",
+        "policy_preserve_mode",
         "history_enabled",
         "covariate_enabled",
         "query",
         "selected_community_ids",
+        "selected_community_ids_pre_filter",
+        "dropped_community_ids",
+        "primary_selected_ids",
+        "fallback_selected_ids",
         "covariate_context",
         "assembled_context",
         "community_tokens",
@@ -387,3 +397,46 @@ def test_logging_payload_contains_required_fields(monkeypatch):
     }
     assert required_fields.issubset(set(payload.keys()))
     assert payload["condition_id"] == "cond_1"
+
+
+def test_policy_preserve_mode_strict_disables_fallback(monkeypatch):
+    context_builder = _build_context_builder()
+    entities = _make_entities()
+    monkeypatch.setattr(
+        "graphrag.query.structured_search.local_search.mixed_context.map_query_to_entities",
+        lambda **_: entities,
+    )
+    result = context_builder.build_context(
+        query="hello",
+        experimental_context_mode=True,
+        experimental_community_policy="leaf_only",
+        experimental_policy_preserve_mode="strict",
+        experimental_history_enabled=False,
+        experimental_covariate_enabled=False,
+        max_context_tokens=200,
+    )
+    payload = result.context_records["experimental_context"].iloc[0].to_dict()
+    assert payload["fallback_selected_ids"] == []
+    assert payload["primary_selected_ids"] == ["l1", "l2"]
+    assert any("strict" in warning for warning in payload["warnings"])
+
+
+def test_payload_selected_ids_track_inserted_reports(monkeypatch):
+    context_builder = _build_context_builder()
+    entities = _make_entities()
+    monkeypatch.setattr(
+        "graphrag.query.structured_search.local_search.mixed_context.map_query_to_entities",
+        lambda **_: entities,
+    )
+    result = context_builder.build_context(
+        query="hello",
+        experimental_context_mode=True,
+        experimental_community_policy="flat_ranked",
+        experimental_history_enabled=False,
+        experimental_covariate_enabled=False,
+        min_community_rank=8,
+        max_context_tokens=200,
+    )
+    payload = result.context_records["experimental_context"].iloc[0].to_dict()
+    assert payload["selected_community_ids"] == ["l1", "l2"]
+    assert payload["dropped_community_ids"] == ["p1", "root"]

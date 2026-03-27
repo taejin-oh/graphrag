@@ -103,6 +103,7 @@ def get_local_search_engine(
             "experimental_context_max_tokens": ls_config.experimental_context_max_tokens,
             "experimental_condition_id": ls_config.experimental_condition_id,
             "experimental_log_context_payload": ls_config.experimental_log_context_payload,
+            "experimental_policy_preserve_mode": ls_config.experimental_policy_preserve_mode,
         },
         response_type=response_type,
         callbacks=callbacks,

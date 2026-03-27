@@ -131,6 +131,7 @@ class LocalSearchMixedContext(LocalContextBuilder):
         experimental_context_max_tokens: int | None = None,
         experimental_condition_id: str | None = None,
         experimental_log_context_payload: bool = True,
+        experimental_policy_preserve_mode: str = "fallback",
         **kwargs: dict[str, Any],
     ) -> ContextBuilderResult:
         """
@@ -184,6 +185,7 @@ class LocalSearchMixedContext(LocalContextBuilder):
                 covariate_enabled=experimental_covariate_enabled,
                 condition_id=experimental_condition_id,
                 log_payload=experimental_log_context_payload,
+                policy_preserve_mode=experimental_policy_preserve_mode,
             )
 
         # build context
@@ -275,6 +277,7 @@ class LocalSearchMixedContext(LocalContextBuilder):
         covariate_enabled: bool,
         condition_id: str | None,
         log_payload: bool,
+        policy_preserve_mode: str,
     ) -> ContextBuilderResult:
         warnings: list[str] = []
         final_context: list[str] = []
@@ -296,6 +299,7 @@ class LocalSearchMixedContext(LocalContextBuilder):
                 include_community_rank=include_community_rank,
                 column_delimiter=column_delimiter,
             ),
+            preserve_mode=policy_preserve_mode,
         )
         warnings.extend(selection_result.warnings)
 
@@ -312,6 +316,11 @@ class LocalSearchMixedContext(LocalContextBuilder):
         if community_context.strip():
             final_context.append(community_context)
             final_context_data = {**final_context_data, **community_context_data}
+        inserted_community_ids = self._extract_inserted_community_ids(
+            context_data=community_context_data,
+            context_name=community_context_name,
+            selected_reports=selection_result.selected_reports,
+        )
 
         covariate_context = ""
         covariate_tokens = 0
@@ -351,19 +360,34 @@ class LocalSearchMixedContext(LocalContextBuilder):
 
         assembled_context = "\n\n".join(chunk for chunk in final_context if chunk.strip())
         assembled_context_tokens = len(self.tokenizer.encode(assembled_context))
+        if assembled_context_tokens > max_context_tokens:
+            warnings.append(
+                "Assembled context exceeded max token budget; this indicates a builder bug."
+            )
 
         condition_label = condition_id or (
             f"{community_policy}|h{int(history_enabled)}|c{int(covariate_enabled)}"
         )
+        selected_pre_filter_ids = [
+            report.community_id for report in selection_result.selected_reports
+        ]
+        dropped_community_ids = [
+            community_id
+            for community_id in selected_pre_filter_ids
+            if community_id not in inserted_community_ids
+        ]
         payload = {
             "condition_id": condition_label,
             "community_policy": community_policy,
+            "policy_preserve_mode": policy_preserve_mode,
             "history_enabled": history_enabled,
             "covariate_enabled": covariate_enabled,
             "query": query,
-            "selected_community_ids": [
-                report.community_id for report in selection_result.selected_reports
-            ],
+            "selected_community_ids": inserted_community_ids,
+            "selected_community_ids_pre_filter": selected_pre_filter_ids,
+            "dropped_community_ids": dropped_community_ids,
+            "primary_selected_ids": selection_result.primary_selected_ids,
+            "fallback_selected_ids": selection_result.fallback_selected_ids,
             "community_context": community_context,
             "covariate_context": covariate_context,
             "history_context": history_context,
@@ -390,11 +414,6 @@ class LocalSearchMixedContext(LocalContextBuilder):
             warnings_count=len(warnings),
             selected_communities=len(selection_result.selected_reports),
         )
-
-        if assembled_context_tokens > max_context_tokens:
-            warnings.append(
-                "Assembled context exceeded max token budget; this indicates a builder bug."
-            )
 
         final_context_data["experimental_context"] = pd.DataFrame([payload])
         return ContextBuilderResult(
@@ -463,6 +482,31 @@ class LocalSearchMixedContext(LocalContextBuilder):
         if isinstance(context_text, list):
             context_text = "\n\n".join(context_text)
         return str(context_text), context_data
+
+    def _extract_inserted_community_ids(
+        self,
+        *,
+        context_data: dict[str, pd.DataFrame],
+        context_name: str,
+        selected_reports: list[CommunityReport],
+    ) -> list[str]:
+        context_key = context_name.lower()
+        if context_key not in context_data:
+            return []
+        context_df = context_data[context_key]
+        if "id" not in context_df.columns:
+            return []
+        short_id_to_community_id = {
+            str(report.short_id): report.community_id
+            for report in selected_reports
+            if report.short_id
+        }
+        inserted_ids: list[str] = []
+        for short_id in context_df["id"].astype(str).tolist():
+            mapped = short_id_to_community_id.get(short_id, short_id)
+            if mapped not in inserted_ids:
+                inserted_ids.append(mapped)
+        return inserted_ids
 
     def _community_report_token_cost(
         self,

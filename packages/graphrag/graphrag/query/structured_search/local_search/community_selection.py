@@ -21,6 +21,8 @@ class CommunitySelectionResult:
 
     selected_reports: list[CommunityReport]
     warnings: list[str]
+    primary_selected_ids: list[str]
+    fallback_selected_ids: list[str]
 
 
 def select_community_reports(
@@ -32,6 +34,7 @@ def select_community_reports(
     report_by_community_id: dict[str, CommunityReport],
     max_tokens: int,
     token_counter: CommunityTokenCounter,
+    preserve_mode: str = "fallback",
 ) -> CommunitySelectionResult:
     """Select community reports according to the configured policy."""
     if policy == "leaf_only":
@@ -41,6 +44,7 @@ def select_community_reports(
             communities_by_short_id=communities_by_short_id,
             max_tokens=max_tokens,
             token_counter=token_counter,
+            preserve_mode=preserve_mode,
         )
     if policy == "leaf_then_parent_mix":
         return _select_leaf_then_parent_mix(
@@ -50,6 +54,7 @@ def select_community_reports(
             report_by_community_id=report_by_community_id,
             max_tokens=max_tokens,
             token_counter=token_counter,
+            preserve_mode=preserve_mode,
         )
     if policy == "pyramid":
         return _select_pyramid(
@@ -59,16 +64,20 @@ def select_community_reports(
             report_by_community_id=report_by_community_id,
             max_tokens=max_tokens,
             token_counter=token_counter,
+            preserve_mode=preserve_mode,
         )
     if policy == "flat_ranked":
         return _select_flat_ranked(
             ranked_all_reports=ranked_all_reports,
             max_tokens=max_tokens,
             token_counter=token_counter,
+            preserve_mode=preserve_mode,
         )
     return CommunitySelectionResult(
         selected_reports=[],
         warnings=[f"Unknown community selection policy '{policy}'."],
+        primary_selected_ids=[],
+        fallback_selected_ids=[],
     )
 
 
@@ -79,6 +88,7 @@ def _select_leaf_only(
     communities_by_short_id: dict[str, Community],
     max_tokens: int,
     token_counter: CommunityTokenCounter,
+    preserve_mode: str,
 ) -> CommunitySelectionResult:
     warnings: list[str] = []
     leaf_reports = [
@@ -96,6 +106,7 @@ def _select_leaf_only(
         max_tokens=max_tokens,
         token_counter=token_counter,
         warnings=warnings,
+        preserve_mode=preserve_mode,
     )
 
 
@@ -107,6 +118,7 @@ def _select_leaf_then_parent_mix(
     report_by_community_id: dict[str, CommunityReport],
     max_tokens: int,
     token_counter: CommunityTokenCounter,
+    preserve_mode: str,
 ) -> CommunitySelectionResult:
     warnings: list[str] = []
     leaf_reports = [
@@ -131,6 +143,8 @@ def _select_leaf_then_parent_mix(
         )
 
     selected: list[CommunityReport] = []
+    primary_selected_ids: list[str] = []
+    fallback_selected_ids: list[str] = []
     selected_ids: set[str] = set()
     used_tokens = 0
     parent_added = False
@@ -141,6 +155,7 @@ def _select_leaf_then_parent_mix(
             break
         selected.append(report)
         selected_ids.add(report.community_id)
+        primary_selected_ids.append(report.community_id)
         used_tokens += report_tokens
 
     for report in parent_reports:
@@ -151,6 +166,7 @@ def _select_leaf_then_parent_mix(
             continue
         selected.append(report)
         selected_ids.add(report.community_id)
+        primary_selected_ids.append(report.community_id)
         used_tokens += report_tokens
         parent_added = True
 
@@ -164,6 +180,9 @@ def _select_leaf_then_parent_mix(
             selected[-1] = candidate_parent
             selected_ids.discard(replacement_leaf.community_id)
             selected_ids.add(candidate_parent.community_id)
+            if replacement_leaf.community_id in primary_selected_ids:
+                primary_selected_ids.remove(replacement_leaf.community_id)
+            primary_selected_ids.append(candidate_parent.community_id)
             used_tokens = replacement_tokens
         else:
             warnings.append(
@@ -175,15 +194,22 @@ def _select_leaf_then_parent_mix(
             "Policy leaf_then_parent_mix: only one community could be inserted."
         )
 
-    selected, fallback_warnings = _append_fallback_reports(
+    selected, fallback_added_ids, fallback_warnings = _append_fallback_reports(
         selected=selected,
         ranked_all_reports=ranked_all_reports,
         max_tokens=max_tokens,
         token_counter=token_counter,
+        preserve_mode=preserve_mode,
     )
+    fallback_selected_ids.extend(fallback_added_ids)
     warnings.extend(fallback_warnings)
 
-    return CommunitySelectionResult(selected_reports=selected, warnings=warnings)
+    return CommunitySelectionResult(
+        selected_reports=selected,
+        warnings=warnings,
+        primary_selected_ids=primary_selected_ids,
+        fallback_selected_ids=fallback_selected_ids,
+    )
 
 
 def _select_pyramid(
@@ -194,9 +220,12 @@ def _select_pyramid(
     report_by_community_id: dict[str, CommunityReport],
     max_tokens: int,
     token_counter: CommunityTokenCounter,
+    preserve_mode: str,
 ) -> CommunitySelectionResult:
     warnings: list[str] = []
     selected: list[CommunityReport] = []
+    primary_selected_ids: list[str] = []
+    fallback_selected_ids: list[str] = []
     selected_ids: set[str] = set()
     used_tokens = 0
 
@@ -213,6 +242,7 @@ def _select_pyramid(
         if top_leaf_tokens <= max_tokens:
             selected.append(top_leaf)
             selected_ids.add(top_leaf.community_id)
+            primary_selected_ids.append(top_leaf.community_id)
             used_tokens += top_leaf_tokens
         else:
             warnings.append(
@@ -235,6 +265,7 @@ def _select_pyramid(
             continue
         selected.append(report)
         selected_ids.add(report.community_id)
+        primary_selected_ids.append(report.community_id)
         used_tokens += report_tokens
         parent_added = True
 
@@ -252,17 +283,25 @@ def _select_pyramid(
                 continue
             selected.append(report)
             selected_ids.add(report.community_id)
+            primary_selected_ids.append(report.community_id)
             used_tokens += report_tokens
 
-    selected, fallback_warnings = _append_fallback_reports(
+    selected, fallback_added_ids, fallback_warnings = _append_fallback_reports(
         selected=selected,
         ranked_all_reports=ranked_all_reports,
         max_tokens=max_tokens,
         token_counter=token_counter,
+        preserve_mode=preserve_mode,
     )
+    fallback_selected_ids.extend(fallback_added_ids)
     warnings.extend(fallback_warnings)
 
-    return CommunitySelectionResult(selected_reports=selected, warnings=warnings)
+    return CommunitySelectionResult(
+        selected_reports=selected,
+        warnings=warnings,
+        primary_selected_ids=primary_selected_ids,
+        fallback_selected_ids=fallback_selected_ids,
+    )
 
 
 def _select_flat_ranked(
@@ -270,6 +309,7 @@ def _select_flat_ranked(
     ranked_all_reports: list[CommunityReport],
     max_tokens: int,
     token_counter: CommunityTokenCounter,
+    preserve_mode: str,
 ) -> CommunitySelectionResult:
     selected = []
     used_tokens = 0
@@ -279,7 +319,12 @@ def _select_flat_ranked(
             continue
         selected.append(report)
         used_tokens += report_tokens
-    return CommunitySelectionResult(selected_reports=selected, warnings=[])
+    return CommunitySelectionResult(
+        selected_reports=selected,
+        warnings=[],
+        primary_selected_ids=[report.community_id for report in selected],
+        fallback_selected_ids=[],
+    )
 
 
 def _fill_with_fallback(
@@ -289,6 +334,7 @@ def _fill_with_fallback(
     max_tokens: int,
     token_counter: CommunityTokenCounter,
     warnings: list[str],
+    preserve_mode: str,
 ) -> CommunitySelectionResult:
     selected = []
     selected_ids: set[str] = set()
@@ -302,19 +348,29 @@ def _fill_with_fallback(
         selected_ids.add(report.community_id)
         used_tokens += report_tokens
 
-    for report in fallback:
-        if report.community_id in selected_ids:
-            continue
-        report_tokens = token_counter(report)
-        if used_tokens + report_tokens > max_tokens:
-            continue
-        selected.append(report)
-        selected_ids.add(report.community_id)
-        used_tokens += report_tokens
+    fallback_selected_ids: list[str] = []
+    if preserve_mode != "strict":
+        for report in fallback:
+            if report.community_id in selected_ids:
+                continue
+            report_tokens = token_counter(report)
+            if used_tokens + report_tokens > max_tokens:
+                continue
+            selected.append(report)
+            selected_ids.add(report.community_id)
+            fallback_selected_ids.append(report.community_id)
+            used_tokens += report_tokens
+    else:
+        warnings.append("Policy preserve mode is strict; fallback community fill disabled.")
 
     if not selected:
         warnings.append("No community reports could be selected under token budget.")
-    return CommunitySelectionResult(selected_reports=selected, warnings=warnings)
+    return CommunitySelectionResult(
+        selected_reports=selected,
+        warnings=warnings,
+        primary_selected_ids=[report.community_id for report in primary if report.community_id in selected_ids],
+        fallback_selected_ids=fallback_selected_ids,
+    )
 
 
 def _append_fallback_reports(
@@ -323,22 +379,28 @@ def _append_fallback_reports(
     ranked_all_reports: list[CommunityReport],
     max_tokens: int,
     token_counter: CommunityTokenCounter,
-) -> tuple[list[CommunityReport], list[str]]:
+    preserve_mode: str,
+) -> tuple[list[CommunityReport], list[str], list[str]]:
     warnings: list[str] = []
+    fallback_selected_ids: list[str] = []
     selected_ids = {report.community_id for report in selected}
     used_tokens = sum(token_counter(report) for report in selected)
-    for report in ranked_all_reports:
-        if report.community_id in selected_ids:
-            continue
-        report_tokens = token_counter(report)
-        if used_tokens + report_tokens > max_tokens:
-            continue
-        selected.append(report)
-        selected_ids.add(report.community_id)
-        used_tokens += report_tokens
+    if preserve_mode != "strict":
+        for report in ranked_all_reports:
+            if report.community_id in selected_ids:
+                continue
+            report_tokens = token_counter(report)
+            if used_tokens + report_tokens > max_tokens:
+                continue
+            selected.append(report)
+            selected_ids.add(report.community_id)
+            fallback_selected_ids.append(report.community_id)
+            used_tokens += report_tokens
+    else:
+        warnings.append("Policy preserve mode is strict; fallback community fill disabled.")
     if not selected:
         warnings.append("No community reports could be selected under token budget.")
-    return selected, warnings
+    return selected, fallback_selected_ids, warnings
 
 
 def _build_parent_candidates(
