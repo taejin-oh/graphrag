@@ -275,6 +275,28 @@ def assert_local_search_configs(
     assert actual.top_k_entities == expected.top_k_entities
     assert actual.top_k_relationships == expected.top_k_relationships
     assert actual.max_context_tokens == expected.max_context_tokens
+    assert (
+        actual.experimental_context_mode == expected.experimental_context_mode
+    )
+    assert (
+        actual.experimental_community_policy == expected.experimental_community_policy
+    )
+    assert (
+        actual.experimental_history_enabled == expected.experimental_history_enabled
+    )
+    assert (
+        actual.experimental_covariate_enabled
+        == expected.experimental_covariate_enabled
+    )
+    assert (
+        actual.experimental_context_max_tokens
+        == expected.experimental_context_max_tokens
+    )
+    assert actual.experimental_condition_id == expected.experimental_condition_id
+    assert (
+        actual.experimental_log_context_payload
+        == expected.experimental_log_context_payload
+    )
 
 
 def assert_global_search_configs(

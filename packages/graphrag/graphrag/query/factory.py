@@ -36,6 +36,7 @@ from graphrag.query.structured_search.local_search.search import LocalSearch
 
 def get_local_search_engine(
     config: GraphRagConfig,
+    communities: list[Community],
     reports: list[CommunityReport],
     text_units: list[TextUnit],
     entities: list[Entity],
@@ -69,6 +70,7 @@ def get_local_search_engine(
         model=chat_model,
         system_prompt=system_prompt,
         context_builder=LocalSearchMixedContext(
+            communities=communities,
             community_reports=reports,
             text_units=text_units,
             entities=entities,
@@ -94,6 +96,13 @@ def get_local_search_engine(
             "return_candidate_context": False,
             "embedding_vectorstore_key": EntityVectorStoreKey.ID,  # set this to EntityVectorStoreKey.TITLE if the vectorstore uses entity title as ids
             "max_context_tokens": ls_config.max_context_tokens,  # change this based on the token limit you have on your model (if you are using a model with 8k limit, a good setting could be 5000)
+            "experimental_context_mode": ls_config.experimental_context_mode,
+            "experimental_community_policy": ls_config.experimental_community_policy,
+            "experimental_history_enabled": ls_config.experimental_history_enabled,
+            "experimental_covariate_enabled": ls_config.experimental_covariate_enabled,
+            "experimental_context_max_tokens": ls_config.experimental_context_max_tokens,
+            "experimental_condition_id": ls_config.experimental_condition_id,
+            "experimental_log_context_payload": ls_config.experimental_log_context_payload,
         },
         response_type=response_type,
         callbacks=callbacks,

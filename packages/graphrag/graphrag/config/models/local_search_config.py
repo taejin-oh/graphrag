@@ -47,3 +47,31 @@ class LocalSearchConfig(BaseModel):
         description="The maximum tokens.",
         default=graphrag_config_defaults.local_search.max_context_tokens,
     )
+    experimental_context_mode: bool = Field(
+        description="Enable experimental context assembly mode for local search.",
+        default=graphrag_config_defaults.local_search.experimental_context_mode,
+    )
+    experimental_community_policy: str = Field(
+        description="Community selection policy for experimental context mode.",
+        default=graphrag_config_defaults.local_search.experimental_community_policy,
+    )
+    experimental_history_enabled: bool = Field(
+        description="Whether to include conversation history block in experimental mode.",
+        default=graphrag_config_defaults.local_search.experimental_history_enabled,
+    )
+    experimental_covariate_enabled: bool = Field(
+        description="Whether to include covariate block in experimental mode.",
+        default=graphrag_config_defaults.local_search.experimental_covariate_enabled,
+    )
+    experimental_context_max_tokens: int | None = Field(
+        description="Optional max token budget for assembled context in experimental mode.",
+        default=graphrag_config_defaults.local_search.experimental_context_max_tokens,
+    )
+    experimental_condition_id: str | None = Field(
+        description="Optional condition id used in context payload logs.",
+        default=graphrag_config_defaults.local_search.experimental_condition_id,
+    )
+    experimental_log_context_payload: bool = Field(
+        description="Whether to emit structured JSON payload logs for experimental context mode.",
+        default=graphrag_config_defaults.local_search.experimental_log_context_payload,
+    )

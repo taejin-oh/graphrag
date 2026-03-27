@@ -269,6 +269,13 @@ class LocalSearchDefaults:
     max_context_tokens: int = 12_000
     completion_model_id: str = DEFAULT_COMPLETION_MODEL_ID
     embedding_model_id: str = DEFAULT_EMBEDDING_MODEL_ID
+    experimental_context_mode: bool = False
+    experimental_community_policy: str = "flat_ranked"
+    experimental_history_enabled: bool = False
+    experimental_covariate_enabled: bool = True
+    experimental_context_max_tokens: int | None = None
+    experimental_condition_id: str | None = None
+    experimental_log_context_payload: bool = True
 
 
 @dataclass
