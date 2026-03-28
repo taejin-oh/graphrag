@@ -91,6 +91,33 @@ python scripts/run_experimental_local_context_matrix.py \
   --max-tokens 1800
 ```
 
+### 단계별 화면 출력(on/off) 예시
+
+아래 옵션을 켜면 조건별로 대표 단계가 터미널에 직접 출력됩니다.
+
+- 어떤 query가 들어왔는지
+- entity top-k 설정/실제 선택 개수 및 목록
+- 선택된 커뮤니티 ID와 레벨별 그룹
+- 커뮤니티 summary 사용 여부
+- 최종 assembled_context 토큰 수 / 경고
+- (옵션) assembled_context 본문
+
+```bash
+python scripts/run_experimental_local_context_matrix.py \
+  --max-tokens 1800 \
+  --trace-steps \
+  --trace-max-items 15
+```
+
+assembled_context 본문까지 즉시 보려면:
+
+```bash
+python scripts/run_experimental_local_context_matrix.py \
+  --max-tokens 1800 \
+  --trace-steps \
+  --trace-show-context
+```
+
 현재 디렉터리가 프로젝트 루트라면 아래처럼 더 짧게도 가능:
 
 ```bash

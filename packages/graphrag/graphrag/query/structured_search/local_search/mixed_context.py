@@ -173,6 +173,7 @@ class LocalSearchMixedContext(LocalContextBuilder):
             return self._build_experimental_context(
                 query=query,
                 selected_entities=selected_entities,
+                top_k_mapped_entities=top_k_mapped_entities,
                 conversation_history=conversation_history,
                 max_context_tokens=experimental_context_max_tokens
                 or max_context_tokens,
@@ -266,6 +267,7 @@ class LocalSearchMixedContext(LocalContextBuilder):
         *,
         query: str,
         selected_entities: list[Entity],
+        top_k_mapped_entities: int,
         conversation_history: ConversationHistory | None,
         max_context_tokens: int,
         include_community_rank: bool,
@@ -376,6 +378,9 @@ class LocalSearchMixedContext(LocalContextBuilder):
             for community_id in selected_pre_filter_ids
             if community_id not in inserted_community_ids
         ]
+        selected_communities_by_level = self._group_community_ids_by_level(
+            inserted_community_ids
+        )
         payload = {
             "condition_id": condition_label,
             "community_policy": community_policy,
@@ -383,11 +388,16 @@ class LocalSearchMixedContext(LocalContextBuilder):
             "history_enabled": history_enabled,
             "covariate_enabled": covariate_enabled,
             "query": query,
+            "mapped_entities_top_k": top_k_mapped_entities,
+            "mapped_entities_count": len(selected_entities),
+            "mapped_entity_titles": [entity.title for entity in selected_entities],
             "selected_community_ids": inserted_community_ids,
+            "selected_community_levels": selected_communities_by_level,
             "selected_community_ids_pre_filter": selected_pre_filter_ids,
             "dropped_community_ids": dropped_community_ids,
             "primary_selected_ids": selection_result.primary_selected_ids,
             "fallback_selected_ids": selection_result.fallback_selected_ids,
+            "community_summary_used": bool(community_context.strip()),
             "community_context": community_context,
             "covariate_context": covariate_context,
             "history_context": history_context,
@@ -420,6 +430,18 @@ class LocalSearchMixedContext(LocalContextBuilder):
             context_chunks=assembled_context,
             context_records=final_context_data,
         )
+
+    def _group_community_ids_by_level(
+        self, community_ids: list[str]
+    ) -> dict[str, list[str]]:
+        by_level: dict[str, list[str]] = {}
+        community_map = self._community_metadata_view()
+        for community_id in community_ids:
+            community = community_map.get(community_id)
+            level = str(community.level) if community else "unknown"
+            by_level.setdefault(level, [])
+            by_level[level].append(community_id)
+        return by_level
 
     def _rank_community_reports(
         self, selected_entities: list[Entity]

@@ -297,6 +297,31 @@ def test_covariate_on_off(monkeypatch):
     assert payload_off["covariate_tokens"] == 0
 
 
+def test_experimental_payload_includes_trace_fields(monkeypatch):
+    context_builder = _build_context_builder()
+    entities = _make_entities()
+    monkeypatch.setattr(
+        "graphrag.query.structured_search.local_search.mixed_context.map_query_to_entities",
+        lambda **_: entities,
+    )
+    result = context_builder.build_context(
+        query="hello",
+        experimental_context_mode=True,
+        experimental_community_policy="flat_ranked",
+        experimental_history_enabled=True,
+        experimental_covariate_enabled=True,
+        max_context_tokens=200,
+        top_k_mapped_entities=7,
+    )
+    payload = result.context_records["experimental_context"].iloc[0].to_dict()
+    assert payload["mapped_entities_top_k"] == 7
+    assert payload["mapped_entities_count"] == 2
+    assert payload["mapped_entity_titles"] == ["Entity1", "Entity2"]
+    assert payload["community_summary_used"] is True
+    assert isinstance(payload["selected_community_levels"], dict)
+    assert "2" in payload["selected_community_levels"]
+
+
 def test_assembled_context_excludes_full_content_and_entity_relationship_text_unit(monkeypatch):
     context_builder = _build_context_builder()
     entities = _make_entities()

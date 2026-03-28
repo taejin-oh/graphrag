@@ -9,6 +9,7 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_ROOT = REPO_ROOT / "packages" / "graphrag"
@@ -41,6 +42,56 @@ def _read_queries(query_file: Path) -> list[str]:
     if not queries:
         raise ValueError("query.txt에서 실행할 쿼리를 찾지 못했습니다.")
     return queries
+
+
+def _as_list(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
+
+
+def _print_trace(
+    *,
+    condition_id: str,
+    payload: dict[str, Any],
+    trace_max_items: int,
+    show_context: bool,
+) -> None:
+    query = str(payload.get("query", ""))
+    top_k = payload.get("mapped_entities_top_k")
+    mapped_entities = _as_list(payload.get("mapped_entity_titles"))
+    mapped_count = payload.get("mapped_entities_count", len(mapped_entities))
+    selected_community_ids = _as_list(payload.get("selected_community_ids"))
+    selected_community_levels = payload.get("selected_community_levels") or {}
+    community_summary_used = bool(payload.get("community_summary_used", False))
+    assembled_context_tokens = payload.get("assembled_context_tokens")
+    warnings = _as_list(payload.get("warnings"))
+    assembled_context = str(payload.get("assembled_context", ""))
+
+    limited_entities = mapped_entities[:trace_max_items]
+    limited_communities = selected_community_ids[:trace_max_items]
+
+    print(f"[TRACE] {condition_id}")
+    print(f"  query: {query}")
+    print(
+        f"  entity_retrieval: top_k={top_k}, selected={mapped_count}, "
+        f"entities={limited_entities}"
+    )
+    print(
+        f"  selected_communities: count={len(selected_community_ids)}, "
+        f"ids={limited_communities}"
+    )
+    print(f"  selected_communities_by_level: {selected_community_levels}")
+    print(f"  community_summary_used: {community_summary_used}")
+    print(f"  assembled_context_tokens: {assembled_context_tokens}")
+    print(f"  warnings: {warnings}")
+    if show_context:
+        print("  assembled_context:")
+        print(assembled_context)
+    else:
+        print("  assembled_context: <hidden> (use --trace-show-context to print)")
 
 
 async def _run(args: argparse.Namespace) -> int:
@@ -91,7 +142,7 @@ async def _run(args: argparse.Namespace) -> int:
             config.local_search.experimental_log_context_payload = True
             config.local_search.experimental_policy_preserve_mode = args.preserve_mode
 
-            response, _ = await api.local_search(
+            response, context_data = await api.local_search(
                 config=config,
                 entities=dfs["entities"],
                 communities=dfs["communities"],
@@ -104,6 +155,24 @@ async def _run(args: argparse.Namespace) -> int:
                 query=query,
                 verbose=args.verbose,
             )
+
+            if args.trace_steps:
+                experimental_context = context_data.get("experimental_context")
+                if (
+                    experimental_context is not None
+                    and hasattr(experimental_context, "empty")
+                    and not experimental_context.empty
+                ):
+                    payload = experimental_context.iloc[0].to_dict()
+                    _print_trace(
+                        condition_id=condition_id,
+                        payload=payload,
+                        trace_max_items=args.trace_max_items,
+                        show_context=args.trace_show_context,
+                    )
+                else:
+                    print(f"[TRACE] {condition_id}")
+                    print("  experimental_context payload not found.")
 
             response_path = run_dir / f"q{query_idx:03d}_c{condition_idx:02d}.response.txt"
             response_path.write_text(str(response), encoding="utf-8")
@@ -181,6 +250,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--run-id", default=None, help="실행 식별자(기본: UTC timestamp)")
     parser.add_argument("--verbose", action="store_true", help="query verbose logging")
+    parser.add_argument(
+        "--trace-steps",
+        action="store_true",
+        help="쿼리 처리 대표 단계 정보를 화면에 출력",
+    )
+    parser.add_argument(
+        "--trace-max-items",
+        type=int,
+        default=20,
+        help="trace 출력 시 entity/community 목록 최대 개수",
+    )
+    parser.add_argument(
+        "--trace-show-context",
+        action="store_true",
+        help="trace 출력 시 assembled_context 본문까지 표시",
+    )
     return parser
 
 
