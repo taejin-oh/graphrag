@@ -149,16 +149,18 @@ class LocalSearchMixedContext(LocalContextBuilder):
             )
             raise ValueError(value_error)
 
+        original_query = query
+        entity_retrieval_query = query
         # map user query to entities
         # if there is conversation history, attached the previous user questions to the current query
-        if conversation_history:
+        if conversation_history and not experimental_context_mode:
             pre_user_questions = "\n".join(
                 conversation_history.get_user_turns(conversation_history_max_turns)
             )
-            query = f"{query}\n{pre_user_questions}"
+            entity_retrieval_query = f"{query}\n{pre_user_questions}"
 
         selected_entities = map_query_to_entities(
-            query=query,
+            query=entity_retrieval_query,
             text_embedding_vectorstore=self.entity_text_embeddings,
             text_embedder=self.text_embedder,
             all_entities_dict=self.entities,
@@ -171,7 +173,7 @@ class LocalSearchMixedContext(LocalContextBuilder):
 
         if experimental_context_mode:
             return self._build_experimental_context(
-                query=query,
+                query=original_query,
                 selected_entities=selected_entities,
                 top_k_mapped_entities=top_k_mapped_entities,
                 conversation_history=conversation_history,
@@ -398,9 +400,6 @@ class LocalSearchMixedContext(LocalContextBuilder):
             "primary_selected_ids": selection_result.primary_selected_ids,
             "fallback_selected_ids": selection_result.fallback_selected_ids,
             "community_summary_used": bool(community_context.strip()),
-            "community_context": community_context,
-            "covariate_context": covariate_context,
-            "history_context": history_context,
             "assembled_context": assembled_context,
             "community_tokens": community_tokens,
             "covariate_tokens": covariate_tokens,

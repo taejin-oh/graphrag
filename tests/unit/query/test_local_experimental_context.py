@@ -412,7 +412,6 @@ def test_logging_payload_contains_required_fields(monkeypatch):
         "dropped_community_ids",
         "primary_selected_ids",
         "fallback_selected_ids",
-        "covariate_context",
         "assembled_context",
         "community_tokens",
         "covariate_tokens",
@@ -422,6 +421,9 @@ def test_logging_payload_contains_required_fields(monkeypatch):
     }
     assert required_fields.issubset(set(payload.keys()))
     assert payload["condition_id"] == "cond_1"
+    assert "community_context" not in payload
+    assert "history_context" not in payload
+    assert "covariate_context" not in payload
 
 
 def test_policy_preserve_mode_strict_disables_fallback(monkeypatch):
@@ -465,3 +467,80 @@ def test_payload_selected_ids_track_inserted_reports(monkeypatch):
     payload = result.context_records["experimental_context"].iloc[0].to_dict()
     assert payload["selected_community_ids"] == ["l1", "l2"]
     assert payload["dropped_community_ids"] == ["p1", "root"]
+
+
+def test_experimental_payload_keeps_only_assembled_context(monkeypatch):
+    context_builder = _build_context_builder()
+    entities = _make_entities()
+    monkeypatch.setattr(
+        "graphrag.query.structured_search.local_search.mixed_context.map_query_to_entities",
+        lambda **_: entities,
+    )
+    history = ConversationHistory.from_list(
+        [
+            {"role": "user", "content": "q1"},
+            {"role": "assistant", "content": "a1"},
+        ]
+    )
+    result = context_builder.build_context(
+        query="hello",
+        conversation_history=history,
+        experimental_context_mode=True,
+        experimental_community_policy="flat_ranked",
+        experimental_history_enabled=True,
+        experimental_covariate_enabled=True,
+        max_context_tokens=200,
+    )
+    payload = result.context_records["experimental_context"].iloc[0].to_dict()
+    assert "assembled_context" in payload
+    assert "community_context" not in payload
+    assert "history_context" not in payload
+    assert "covariate_context" not in payload
+
+
+def test_experimental_history_toggle_does_not_affect_entity_retrieval_or_selected_communities(
+    monkeypatch,
+):
+    context_builder = _build_context_builder()
+    recorded_queries: list[str] = []
+    entities = _make_entities()
+
+    def _capture_map_query_to_entities(**kwargs):
+        recorded_queries.append(kwargs["query"])
+        return entities
+
+    monkeypatch.setattr(
+        "graphrag.query.structured_search.local_search.mixed_context.map_query_to_entities",
+        _capture_map_query_to_entities,
+    )
+
+    history = ConversationHistory.from_list(
+        [
+            {"role": "user", "content": "older-user-q"},
+            {"role": "assistant", "content": "older-assistant-a"},
+        ]
+    )
+
+    result_history_off = context_builder.build_context(
+        query="hello",
+        conversation_history=history,
+        experimental_context_mode=True,
+        experimental_community_policy="flat_ranked",
+        experimental_history_enabled=False,
+        experimental_covariate_enabled=False,
+        max_context_tokens=200,
+    )
+    result_history_on = context_builder.build_context(
+        query="hello",
+        conversation_history=history,
+        experimental_context_mode=True,
+        experimental_community_policy="flat_ranked",
+        experimental_history_enabled=True,
+        experimental_covariate_enabled=False,
+        max_context_tokens=200,
+    )
+
+    payload_off = result_history_off.context_records["experimental_context"].iloc[0].to_dict()
+    payload_on = result_history_on.context_records["experimental_context"].iloc[0].to_dict()
+    assert payload_off["selected_community_ids"] == payload_on["selected_community_ids"]
+    assert recorded_queries == ["hello", "hello"]
