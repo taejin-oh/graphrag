@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-import hashlib
+import re
 from collections import defaultdict
 
 import pandas as pd
@@ -38,18 +38,28 @@ def build_relationship_transitions(
 
     temporal_index = _build_temporal_index(text_units, text_unit_id_column)
     events: dict[tuple[str, str], list[dict[str, object]]] = defaultdict(list)
+    source_slot_registry: dict[str, list[tuple[str, set[str]]]] = defaultdict(list)
+    ordered_rows = sorted(
+        relationships.itertuples(index=False),
+        key=lambda row: _row_first_seen_sort_key(row, temporal_index),
+    )
 
-    for row in relationships.itertuples(index=False):
+    for row in ordered_rows:
         source = str(getattr(row, "source", "") or "")
         target = str(getattr(row, "target", "") or "")
         text_unit_ids = _as_list(getattr(row, "text_unit_ids", []))
         if not source or not target or not text_unit_ids:
             continue
 
-        relation_slot = _relation_slot(
+        relation_tokens = _relation_tokens(
             source=source,
             target=target,
             description=getattr(row, "description", None),
+        )
+        relation_slot = _assign_relation_slot(
+            source=source,
+            relation_tokens=relation_tokens,
+            registry=source_slot_registry,
         )
         sorted_ids = sorted(
             [str(text_unit_id) for text_unit_id in text_unit_ids],
@@ -133,10 +143,29 @@ def _build_temporal_index(
     return temporal_index
 
 
-def _relation_slot(source: str, target: str, description: object) -> str:
+def _assign_relation_slot(
+    source: str,
+    relation_tokens: set[str],
+    registry: dict[str, list[tuple[str, set[str]]]],
+    threshold: float = 0.3,
+) -> str:
+    existing_slots = registry[source]
+    for slot_name, slot_tokens in existing_slots:
+        if _jaccard_similarity(relation_tokens, slot_tokens) >= threshold:
+            return slot_name
+    slot_name = f"slot_{len(existing_slots)}"
+    existing_slots.append((slot_name, relation_tokens))
+    return slot_name
+
+
+def _relation_tokens(description: object, source: str, target: str) -> set[str]:
     normalized = _normalize_description(description, source=source, target=target)
-    digest = hashlib.sha1(f"{source}|{normalized}".encode("utf-8")).hexdigest()[:12]
-    return digest
+    tokens = re.findall(r"[a-z0-9]+", normalized)
+    return {
+        _canonical_relation_token(token)
+        for token in tokens
+        if len(token) > 2 and token not in _STOPWORDS
+    }
 
 
 def _normalize_description(description: object, source: str, target: str) -> str:
@@ -147,11 +176,52 @@ def _normalize_description(description: object, source: str, target: str) -> str
     if not text:
         return "unknown"
     lowered = text.lower()
-    source_tokens = [token for token in source.lower().split() if token]
-    target_tokens = [token for token in target.lower().split() if token]
-    for token in source_tokens + target_tokens:
-        lowered = lowered.replace(token, "")
+    lowered = _remove_entity_phrase(lowered, source.lower())
+    lowered = _remove_entity_phrase(lowered, target.lower())
     return " ".join(lowered.split())[:120]
+
+
+def _remove_entity_phrase(text: str, phrase: str) -> str:
+    cleaned = phrase.strip()
+    if not cleaned:
+        return text
+    escaped = r"\s+".join(re.escape(part) for part in cleaned.split() if part)
+    if not escaped:
+        return text
+    pattern = re.compile(rf"\b{escaped}\b")
+    return pattern.sub(" ", text)
+
+
+def _jaccard_similarity(left: set[str], right: set[str]) -> float:
+    if not left and not right:
+        return 1.0
+    if not left or not right:
+        return 0.0
+    return len(left & right) / len(left | right)
+
+
+def _canonical_relation_token(token: str) -> str:
+    if token in {"join", "joined", "joins", "work", "works", "worked", "working"}:
+        return "employment"
+    if token in {"employ", "employed", "employee", "employment"}:
+        return "employment"
+    if token in {"live", "lives", "living", "reside", "resides", "resident"}:
+        return "residence"
+    return token
+
+
+def _row_first_seen_sort_key(
+    row: object,
+    temporal_index: dict[str, dict[str, str | int | None]],
+) -> tuple[str, int, str, int, int, str]:
+    text_unit_ids = _as_list(getattr(row, "text_unit_ids", []))
+    if not text_unit_ids:
+        return ("~", 10**12, "~", 10**12, 10**12, "~")
+    first_id = min(
+        (str(text_unit_id) for text_unit_id in text_unit_ids),
+        key=lambda tid: _temporal_sort_key(tid, temporal_index),
+    )
+    return _temporal_sort_key(first_id, temporal_index)
 
 
 def _as_list(value: object) -> list[str]:
@@ -216,3 +286,24 @@ def _empty_transitions_df() -> pd.DataFrame:
             "change_index",
         ]
     )
+
+
+_STOPWORDS = {
+    "and",
+    "are",
+    "because",
+    "for",
+    "from",
+    "has",
+    "have",
+    "into",
+    "now",
+    "that",
+    "the",
+    "their",
+    "then",
+    "this",
+    "was",
+    "were",
+    "with",
+}
