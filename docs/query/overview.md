@@ -14,6 +14,9 @@ It is responsible for the following tasks:
 Local search generates answers by combining relevant data from the AI-extracted knowledge-graph with text chunks of the raw documents. This method is suitable for questions that require an understanding of specific entities mentioned in the documents (e.g. What are the healing properties of chamomile?).
 
 For more details about how Local Search works please refer to the [Local Search](local_search.md) page.
+For temporal behavior details in community summarization and query processing, see:
+- [Temporal Behavior (EN)](temporal_behavior.md)
+- [시간 정보 적용 방식 (KO)](temporal_behavior.ko.md)
 
 ## Global Search
 
