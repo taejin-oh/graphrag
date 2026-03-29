@@ -103,6 +103,34 @@ def sort_context(
     transition_records: list[dict] | None = None,
 ) -> str:
     """Sort local context by importance first, then temporal order as tie-breaker."""
+    sorted_transitions = sorted(
+        transition_records or [],
+        key=lambda item: (
+            _sortable_int(item.get("changed_at_turn_index")),
+            str(item.get("changed_at_timestamp") or "~"),
+            str(item.get("source") or ""),
+            str(item.get("relation_slot") or ""),
+        ),
+    )
+
+    def _fit_transitions(base_units: list[dict]) -> list[dict]:
+        if not sorted_transitions:
+            return []
+        if not max_context_tokens:
+            return sorted_transitions
+        selected: list[dict] = []
+        for transition in sorted_transitions:
+            candidate = selected + [transition]
+            candidate_text = get_context_string(
+                base_units,
+                sub_community_reports,
+                transition_records=candidate,
+            )
+            if tokenizer.num_tokens(candidate_text) > max_context_tokens:
+                break
+            selected = candidate
+        return selected
+
     sorted_text_units = sorted(
         local_context,
         key=lambda x: (
@@ -117,10 +145,11 @@ def sort_context(
     for record in sorted_text_units:
         current_text_units.append(record)
         if max_context_tokens:
+            fitted_transitions = _fit_transitions(current_text_units)
             new_context_string = get_context_string(
                 current_text_units,
                 sub_community_reports,
-                transition_records=transition_records,
+                transition_records=fitted_transitions,
             )
             if tokenizer.num_tokens(new_context_string) > max_context_tokens:
                 break
@@ -128,10 +157,11 @@ def sort_context(
             context_string = new_context_string
 
     if context_string == "":
+        fitted_transitions = _fit_transitions(sorted_text_units)
         return get_context_string(
             sorted_text_units,
             sub_community_reports,
-            transition_records=transition_records,
+            transition_records=fitted_transitions,
         )
 
     return context_string

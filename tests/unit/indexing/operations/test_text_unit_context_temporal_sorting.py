@@ -12,6 +12,7 @@ from graphrag.index.operations.summarize_communities.text_unit_context.sort_cont
 )
 from graphrag.index.operations.summarize_communities.text_unit_context.context_builder import (
     build_local_context,
+    build_level_context,
 )
 
 
@@ -317,3 +318,167 @@ def test_build_local_context_maps_entity_ids_to_titles_for_transition_fallback()
     context_string = out.iloc[0][schemas.CONTEXT_STRING]
     assert "-----RELATIONSHIP_TRANSITIONS-----" in context_string
     assert "ALICE,slot_0,COMPANY_A,COMPANY_B" in context_string
+
+
+def test_sort_context_limits_transition_rows_under_token_budget():
+    context = [
+        {
+            "id": 1,
+            "text": "short source",
+            "entity_degree": 1,
+            "start_turn_index": 1,
+            "turn_timestamp_start": "2026-01-01T09:00:00Z",
+            "chunk_index_in_conversation": 0,
+        }
+    ]
+    transitions = [
+        {
+            "source": "ALICE",
+            "relation_slot": "slot_0",
+            "from_target": "A",
+            "to_target": "B",
+            "changed_at_turn_index": 1,
+            "changed_at_timestamp": "2026-01-01T09:00:00Z",
+        },
+        {
+            "source": "ALICE",
+            "relation_slot": "slot_0",
+            "from_target": "B",
+            "to_target": "C",
+            "changed_at_turn_index": 2,
+            "changed_at_timestamp": "2026-01-01T10:00:00Z",
+        },
+    ]
+
+    out = sort_context(
+        context,
+        tokenizer=_FakeTokenizer(),
+        transition_records=transitions,
+        max_context_tokens=320,
+    )
+
+    assert "-----RELATIONSHIP_TRANSITIONS-----" in out
+    assert "ALICE,slot_0,A,B" in out
+    assert "ALICE,slot_0,B,C" not in out
+
+
+def test_build_level_context_remaining_path_keeps_transition_records():
+    local_context = pd.DataFrame(
+        [
+            {
+                "community": 1,
+                "level": 0,
+                "all_context": [
+                    {
+                        "id": 1,
+                        "text": "source text",
+                        "entity_degree": 10,
+                        "start_turn_index": 1,
+                        "turn_timestamp_start": "2026-01-01T09:00:00Z",
+                        "chunk_index_in_conversation": 0,
+                    }
+                ],
+                "transition_records": [
+                    {
+                        "source": "ALICE",
+                        "relation_slot": "slot_0",
+                        "from_target": "COMPANY_A",
+                        "to_target": "COMPANY_B",
+                        "changed_at_turn_index": 2,
+                        "changed_at_timestamp": "2026-01-01T10:00:00Z",
+                    }
+                ],
+                "context_string": "x" * 999,
+                "context_size": 999,
+                "context_exceed_limit": True,
+            },
+            {
+                "community": 2,
+                "level": 1,
+                "all_context": [],
+                "transition_records": [],
+                "context_string": "sub",
+                "context_size": 3,
+                "context_exceed_limit": False,
+            },
+        ]
+    )
+    hierarchy = pd.DataFrame(
+        [{"community": 1, "level": 0, "sub_community": 999}]
+    )
+    report_df = pd.DataFrame(
+        [{"community": 2, "level": 1, "full_content": "child report"}]
+    )
+
+    out = build_level_context(
+        report_df=report_df,
+        community_hierarchy_df=hierarchy,
+        local_context_df=local_context,
+        level=0,
+        tokenizer=_FakeTokenizer(),
+        max_context_tokens=1_000,
+    )
+
+    value = out.iloc[0][schemas.CONTEXT_STRING]
+    assert "-----RELATIONSHIP_TRANSITIONS-----" in value
+    assert "ALICE,slot_0,COMPANY_A,COMPANY_B" in value
+
+
+def test_build_level_context_substitution_path_appends_transition_records():
+    local_context = pd.DataFrame(
+        [
+            {
+                "community": 1,
+                "level": 0,
+                "all_context": [
+                    {
+                        "id": 1,
+                        "text": "parent source text",
+                        "entity_degree": 5,
+                        "start_turn_index": 1,
+                        "turn_timestamp_start": "2026-01-01T09:00:00Z",
+                        "chunk_index_in_conversation": 0,
+                    }
+                ],
+                "transition_records": [
+                    {
+                        "source": "ALICE",
+                        "relation_slot": "slot_0",
+                        "from_target": "COMPANY_A",
+                        "to_target": "COMPANY_B",
+                        "changed_at_turn_index": 2,
+                        "changed_at_timestamp": "2026-01-01T10:00:00Z",
+                    }
+                ],
+                "context_string": "x" * 999,
+                "context_size": 999,
+                "context_exceed_limit": True,
+            },
+            {
+                "community": 2,
+                "level": 1,
+                "all_context": [],
+                "transition_records": [],
+                "context_string": "child context",
+                "context_size": 12,
+                "context_exceed_limit": False,
+            },
+        ]
+    )
+    hierarchy = pd.DataFrame([{"community": 1, "level": 0, "sub_community": 2}])
+    report_df = pd.DataFrame(
+        [{"community": 2, "level": 1, "full_content": "child report"}]
+    )
+
+    out = build_level_context(
+        report_df=report_df,
+        community_hierarchy_df=hierarchy,
+        local_context_df=local_context,
+        level=0,
+        tokenizer=_FakeTokenizer(),
+        max_context_tokens=1_000,
+    )
+
+    value = out.iloc[0][schemas.CONTEXT_STRING]
+    assert "child report" in value
+    assert "-----RELATIONSHIP_TRANSITIONS-----" in value

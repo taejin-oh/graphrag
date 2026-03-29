@@ -46,6 +46,41 @@ def _as_transition_list(value: object) -> list[dict]:
     return []
 
 
+def _append_transition_block(
+    *,
+    base_context: str,
+    transition_records: list[dict],
+    tokenizer: Tokenizer,
+    max_context_tokens: int,
+) -> str:
+    """Append as many transition rows as will fit under max token budget."""
+    transition_records = _as_transition_list(transition_records)
+    if not transition_records:
+        return base_context
+
+    selected: list[dict] = []
+    for transition in sorted(
+        transition_records,
+        key=lambda item: (
+            int(item.get("changed_at_turn_index") or 10**12),
+            str(item.get("changed_at_timestamp") or "~"),
+            str(item.get("source") or ""),
+            str(item.get("relation_slot") or ""),
+        ),
+    ):
+        candidate = selected + [transition]
+        transition_block = sort_context([], tokenizer, transition_records=candidate)
+        merged = f"{base_context}\n\n{transition_block}" if transition_block else base_context
+        if tokenizer.num_tokens(merged) > max_context_tokens:
+            break
+        selected = candidate
+
+    if not selected:
+        return base_context
+    transition_block = sort_context([], tokenizer, transition_records=selected)
+    return f"{base_context}\n\n{transition_block}" if transition_block else base_context
+
+
 def _build_transition_records(
     community_membership_df: pd.DataFrame,
     relationship_transitions_df: pd.DataFrame,
@@ -284,14 +319,17 @@ def build_level_context(
         level_context_df = local_context_df[
             local_context_df[schemas.COMMUNITY_LEVEL] == level
         ]
+        exceed_mask = (
+            level_context_df[schemas.CONTEXT_EXCEED_FLAG].fillna(False).astype(bool)
+        )
 
         valid_context_df = cast(
             "pd.DataFrame",
-            level_context_df[~level_context_df[schemas.CONTEXT_EXCEED_FLAG]],
+            level_context_df[~exceed_mask],
         )
         invalid_context_df = cast(
             "pd.DataFrame",
-            level_context_df[level_context_df[schemas.CONTEXT_EXCEED_FLAG]],
+            level_context_df[exceed_mask],
         )
 
         if invalid_context_df.empty:
@@ -327,13 +365,16 @@ def build_level_context(
     level_context_df = level_context_df[level_context_df["_merge"] == "left_only"].drop(
         "_merge", axis=1
     )
+    exceed_mask = (
+        level_context_df[schemas.CONTEXT_EXCEED_FLAG].fillna(False).astype(bool)
+    )
     valid_context_df = cast(
         "pd.DataFrame",
-        level_context_df[level_context_df[schemas.CONTEXT_EXCEED_FLAG] is False],
+        level_context_df[~exceed_mask],
     )
     invalid_context_df = cast(
         "pd.DataFrame",
-        level_context_df[level_context_df[schemas.CONTEXT_EXCEED_FLAG] is True],
+        level_context_df[exceed_mask],
     )
 
     if invalid_context_df.empty:
@@ -394,6 +435,26 @@ def build_level_context(
     community_df[schemas.CONTEXT_SIZE] = community_df[schemas.CONTEXT_STRING].apply(
         lambda x: tokenizer.num_tokens(x)
     )
+    community_df = community_df.merge(
+        invalid_context_df[[schemas.COMMUNITY_ID, "transition_records"]],
+        on=schemas.COMMUNITY_ID,
+        how="left",
+    )
+    community_df["transition_records"] = community_df["transition_records"].apply(
+        _as_transition_list
+    )
+    community_df[schemas.CONTEXT_STRING] = community_df.apply(
+        lambda row: _append_transition_block(
+            base_context=row[schemas.CONTEXT_STRING],
+            transition_records=row.get("transition_records", []),
+            tokenizer=tokenizer,
+            max_context_tokens=max_context_tokens,
+        ),
+        axis=1,
+    )
+    community_df[schemas.CONTEXT_SIZE] = community_df[schemas.CONTEXT_STRING].apply(
+        lambda x: tokenizer.num_tokens(x)
+    )
     community_df[schemas.CONTEXT_EXCEED_FLAG] = False
     community_df[schemas.COMMUNITY_LEVEL] = level
 
@@ -408,9 +469,18 @@ def build_level_context(
     remaining_df = remaining_df[remaining_df["_merge"] == "left_only"].drop(
         "_merge", axis=1
     )
-    remaining_df[schemas.CONTEXT_STRING] = cast(
-        "pd.DataFrame", remaining_df[schemas.ALL_CONTEXT]
-    ).apply(lambda x: sort_context(x, tokenizer, max_context_tokens=max_context_tokens))
+    if remaining_df.empty:
+        return cast("pd.DataFrame", pd.concat([valid_context_df, community_df]))
+
+    remaining_df[schemas.CONTEXT_STRING] = remaining_df.apply(
+        lambda row: sort_context(
+            row[schemas.ALL_CONTEXT],
+            tokenizer,
+            max_context_tokens=max_context_tokens,
+            transition_records=row.get("transition_records", []),
+        ),
+        axis=1,
+    )
     remaining_df[schemas.CONTEXT_SIZE] = cast(
         "pd.DataFrame", remaining_df[schemas.CONTEXT_STRING]
     ).apply(lambda x: tokenizer.num_tokens(x))
