@@ -92,17 +92,30 @@ def build_relationship_transitions(
         for event in ordered:
             current_target = str(event["target"])
             if prev_target is not None and current_target != prev_target and prev_event:
+                changed_turn_index = event["turn_index"]
+                changed_timestamp = event["timestamp"]
+                previous_turn_index = prev_event["turn_index"]
+                previous_timestamp = prev_event["timestamp"]
+                if (
+                    changed_turn_index is None
+                    and changed_timestamp is None
+                    and previous_turn_index is None
+                    and previous_timestamp is None
+                ):
+                    prev_target = current_target
+                    prev_event = event
+                    continue
                 transitions.append({
                     "source": source,
                     "relation_slot": relation_slot,
                     "from_target": prev_target,
                     "to_target": current_target,
                     "changed_at_text_unit_id": event["text_unit_id"],
-                    "changed_at_turn_index": event["turn_index"],
-                    "changed_at_timestamp": event["timestamp"],
+                    "changed_at_turn_index": changed_turn_index,
+                    "changed_at_timestamp": changed_timestamp,
                     "previous_text_unit_id": prev_event["text_unit_id"],
-                    "previous_turn_index": prev_event["turn_index"],
-                    "previous_timestamp": prev_event["timestamp"],
+                    "previous_turn_index": previous_turn_index,
+                    "previous_timestamp": previous_timestamp,
                     "change_index": change_index,
                 })
                 change_index += 1

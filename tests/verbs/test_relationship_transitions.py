@@ -211,3 +211,39 @@ def test_build_relationship_transitions_keeps_distinct_relation_slots():
 
     transitions = build_relationship_transitions(relationships, text_units)
     assert transitions.empty
+
+
+def test_build_relationship_transitions_drops_events_without_temporal_metadata():
+    relationships = pd.DataFrame(
+        [
+            {
+                "source": "ALICE",
+                "target": "COMPANY_A",
+                "description": ["ALICE works at COMPANY_A"],
+                "text_unit_ids": ["missing_t1"],
+            },
+            {
+                "source": "ALICE",
+                "target": "COMPANY_B",
+                "description": ["ALICE works at COMPANY_B"],
+                "text_unit_ids": ["missing_t2"],
+            },
+        ]
+    )
+    text_units = pd.DataFrame(
+        [
+            {
+                "id": "known_t1",
+                "conversation_id": "c1",
+                "start_turn_index": 1,
+                "end_turn_index": 1,
+                "turn_timestamp_start": "2026-01-01T00:00:00Z",
+                "turn_timestamp_end": "2026-01-01T00:00:00Z",
+                "chunk_index_in_conversation": 0,
+                "chunk_index_in_document": 0,
+            }
+        ]
+    )
+
+    transitions = build_relationship_transitions(relationships, text_units)
+    assert transitions.empty
