@@ -60,6 +60,21 @@ def build_local_context(
             "id": x[schemas.ALL_DETAILS][schemas.SHORT_ID],
             "text": x[schemas.ALL_DETAILS][schemas.TEXT],
             "entity_degree": x[schemas.ALL_DETAILS][schemas.ENTITY_DEGREE],
+            schemas.START_TURN_INDEX: x[schemas.ALL_DETAILS].get(
+                schemas.START_TURN_INDEX
+            ),
+            schemas.END_TURN_INDEX: x[schemas.ALL_DETAILS].get(
+                schemas.END_TURN_INDEX
+            ),
+            schemas.TURN_TIMESTAMP_START: x[schemas.ALL_DETAILS].get(
+                schemas.TURN_TIMESTAMP_START
+            ),
+            schemas.TURN_TIMESTAMP_END: x[schemas.ALL_DETAILS].get(
+                schemas.TURN_TIMESTAMP_END
+            ),
+            schemas.CHUNK_INDEX_IN_CONVERSATION: x[schemas.ALL_DETAILS].get(
+                schemas.CHUNK_INDEX_IN_CONVERSATION
+            ),
         },
         axis=1,
     )
