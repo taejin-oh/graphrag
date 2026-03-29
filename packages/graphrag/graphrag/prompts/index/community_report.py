@@ -17,11 +17,37 @@ The report should include the following sections:
 - IMPACT SEVERITY RATING: a float score between 0-10 that represents the severity of IMPACT posed by entities within the community.  IMPACT is the scored importance of a community.
 - RATING EXPLANATION: Give a single sentence explanation of the IMPACT severity rating.
 - DETAILED FINDINGS: A list of 5-10 key insights about the community. Each insight should have a short summary followed by multiple paragraphs of explanatory text grounded according to the grounding rules below. Be comprehensive.
+- CURRENT STATE: A concise statement of the latest known state, prioritizing newer evidence over older conflicting evidence.
+- TIMELINE EVENTS: Chronological events/facts that explain how the community evolved.
+- SUPERSEDED FACTS: Older facts that were replaced or contradicted by newer evidence. Keep these explicit.
+- DATE RANGE: A date range [START, END] in YYYY-MM-DD format that reflects the evidence window.
 
 Return output as a well-formed JSON-formatted string with the following format:
     {{
         "title": <report_title>,
         "summary": <executive_summary>,
+        "current_state": <latest_consolidated_state>,
+        "timeline_events": [
+            {{
+                "summary": <event_1_summary>,
+                "explanation": <event_1_explanation>
+            }},
+            {{
+                "summary": <event_2_summary>,
+                "explanation": <event_2_explanation>
+            }}
+        ],
+        "superseded_facts": [
+            {{
+                "summary": <superseded_fact_1_summary>,
+                "explanation": <superseded_fact_1_explanation>
+            }},
+            {{
+                "summary": <superseded_fact_2_summary>,
+                "explanation": <superseded_fact_2_explanation>
+            }}
+        ],
+        "date_range": [<start_date>, <end_date>],
         "rating": <impact_severity_rating>,
         "rating_explanation": <rating_explanation>,
         "findings": [
@@ -114,11 +140,37 @@ The report should include the following sections:
 - IMPACT SEVERITY RATING: a float score between 0-10 that represents the severity of IMPACT posed by entities within the community.  IMPACT is the scored importance of a community.
 - RATING EXPLANATION: Give a single sentence explanation of the IMPACT severity rating.
 - DETAILED FINDINGS: A list of 5-10 key insights about the community. Each insight should have a short summary followed by multiple paragraphs of explanatory text grounded according to the grounding rules below. Be comprehensive.
+- CURRENT STATE: A concise statement of the latest known state, prioritizing newer evidence over older conflicting evidence.
+- TIMELINE EVENTS: Chronological events/facts that explain how the community evolved.
+- SUPERSEDED FACTS: Older facts that were replaced or contradicted by newer evidence. Keep these explicit.
+- DATE RANGE: A date range [START, END] in YYYY-MM-DD format that reflects the evidence window.
 
 Return output as a well-formed JSON-formatted string with the following format:
     {{
         "title": <report_title>,
         "summary": <executive_summary>,
+        "current_state": <latest_consolidated_state>,
+        "timeline_events": [
+            {{
+                "summary": <event_1_summary>,
+                "explanation": <event_1_explanation>
+            }},
+            {{
+                "summary": <event_2_summary>,
+                "explanation": <event_2_explanation>
+            }}
+        ],
+        "superseded_facts": [
+            {{
+                "summary": <superseded_fact_1_summary>,
+                "explanation": <superseded_fact_1_explanation>
+            }},
+            {{
+                "summary": <superseded_fact_2_summary>,
+                "explanation": <superseded_fact_2_explanation>
+            }}
+        ],
+        "date_range": [<start_date>, <end_date>],
         "rating": <impact_severity_rating>,
         "rating_explanation": <rating_explanation>,
         "findings": [

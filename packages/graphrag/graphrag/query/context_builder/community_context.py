@@ -3,6 +3,7 @@
 
 """Community Context."""
 
+import json
 import logging
 import random
 from typing import Any, cast
@@ -19,6 +20,48 @@ logger = logging.getLogger(__name__)
 NO_COMMUNITY_RECORDS_WARNING: str = (
     "Warning: No community records added when building community context."
 )
+
+_TEMPORAL_ATTRIBUTE_ORDER = [
+    "current_state",
+    "date_range",
+    "timeline_events",
+    "superseded_facts",
+]
+
+
+def _ordered_attributes(attributes: list[str]) -> list[str]:
+    """Order attributes so temporal fields appear first in a stable order."""
+    preferred = [name for name in _TEMPORAL_ATTRIBUTE_ORDER if name in attributes]
+    remaining = [name for name in attributes if name not in preferred]
+    return preferred + remaining
+
+
+def _format_attribute_value(field: str, value: Any) -> str:
+    """Render attribute values into compact, prompt-friendly strings."""
+    if value is None:
+        return ""
+    if field == "date_range" and isinstance(value, list):
+        if len(value) == 2:
+            return f"{value[0]} -> {value[1]}"
+        return ", ".join(str(item) for item in value)
+    if field in {"timeline_events", "superseded_facts"} and isinstance(value, list):
+        chunks: list[str] = []
+        for item in value:
+            if isinstance(item, dict):
+                summary = str(item.get("summary", "")).strip()
+                explanation = str(item.get("explanation", "")).strip()
+                if summary and explanation:
+                    chunks.append(f"{summary}: {explanation}")
+                elif summary:
+                    chunks.append(summary)
+                elif explanation:
+                    chunks.append(explanation)
+            else:
+                chunks.append(str(item))
+        return " || ".join(chunk for chunk in chunks if chunk)
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    return str(value)
 
 
 def build_community_context(
@@ -53,7 +96,7 @@ def build_community_context(
 
     def _get_header(attributes: list[str]) -> list[str]:
         header = ["id", "title"]
-        attributes = [col for col in attributes if col not in header]
+        attributes = [col for col in _ordered_attributes(attributes) if col not in header]
         if not include_community_weight:
             attributes = [col for col in attributes if col != community_weight_name]
         header.extend(attributes)
@@ -69,7 +112,10 @@ def build_community_context(
             report.short_id if report.short_id else "",
             report.title,
             *[
-                str(report.attributes.get(field, "")) if report.attributes else ""
+                _format_attribute_value(
+                    field,
+                    report.attributes.get(field, "") if report.attributes else "",
+                )
                 for field in attributes
             ],
         ]

@@ -2,8 +2,10 @@
 # Licensed under the MIT License
 
 from graphrag.data_model.entity import Entity
+from graphrag.data_model.community_report import CommunityReport
 from graphrag.data_model.relationship import Relationship
 from graphrag.data_model.text_unit import TextUnit
+from graphrag.query.context_builder.community_context import build_community_context
 from graphrag.query.structured_search.local_search.mixed_context import (
     LocalSearchMixedContext,
 )
@@ -120,3 +122,50 @@ def test_build_text_unit_context_candidate_marks_in_context_across_current_and_h
 
     assert "sources" in context_data
     assert context_data["sources"]["in_context"].tolist() == [True, True]
+
+
+def test_build_community_context_serializes_temporal_fields_for_summary_table():
+    report = CommunityReport(
+        id="r1",
+        short_id="1",
+        title="Community A",
+        community_id="1",
+        summary="overall summary",
+        full_content="full report",
+        rank=7.0,
+        attributes={
+            "current_state": "state now",
+            "date_range": ["2026-01-01", "2026-01-31"],
+            "timeline_events": [
+                {"summary": "event 1", "explanation": "history one"},
+                {"summary": "event 2", "explanation": "history two"},
+            ],
+            "superseded_facts": [
+                {"summary": "old fact", "explanation": "updated by new evidence"}
+            ],
+        },
+    )
+
+    _, context_data = build_community_context(
+        community_reports=[report],
+        tokenizer=DummyTokenizer(),  # type: ignore[arg-type]
+        use_community_summary=True,
+        shuffle_data=False,
+        include_community_weight=False,
+        max_context_tokens=10_000,
+        single_batch=True,
+    )
+
+    reports_df = context_data["reports"]
+    assert reports_df.columns.tolist()[:6] == [
+        "id",
+        "title",
+        "current_state",
+        "date_range",
+        "timeline_events",
+        "superseded_facts",
+    ]
+    assert reports_df.iloc[0]["current_state"] == "state now"
+    assert reports_df.iloc[0]["date_range"] == "2026-01-01 -> 2026-01-31"
+    assert "event 1: history one" in reports_df.iloc[0]["timeline_events"]
+    assert "old fact: updated by new evidence" in reports_df.iloc[0]["superseded_facts"]
