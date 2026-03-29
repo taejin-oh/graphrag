@@ -53,6 +53,12 @@ where 1, 2, 4, 5, 7, 23, 2, 34, and 46 represent the id (not the index) of the r
 
 Limit the total report length to {max_report_length} words.
 
+Temporal handling guidance:
+- When a RELATIONSHIP_TRANSITIONS dataset is present in the input context, treat each row as a target-change event for a source and relation slot.
+- For CURRENT STATE, prefer the latest `to_target` over `from_target`.
+- For TIMELINE EVENTS and SUPERSEDED FACTS, explicitly mention replaced `from_target` values and what replaced them.
+- Keep superseded targets out of CURRENT STATE unless the user explicitly asks for history or ambiguity requires both.
+
 # Example Input
 -----------
 SOURCES

@@ -12,6 +12,7 @@ from graphrag.data_model.dfs import (
     covariates_typed,
     documents_typed,
     entities_typed,
+    relationship_transitions_typed,
     relationships_typed,
     text_units_typed,
 )
@@ -44,6 +45,12 @@ class DataReader:
         """Load and return the relationships dataframe with correct types."""
         df = await self._table_provider.read_dataframe("relationships")
         return relationships_typed(df)
+
+
+    async def relationship_transitions(self) -> pd.DataFrame:
+        """Load and return relationship transitions dataframe with correct types."""
+        df = await self._table_provider.read_dataframe("relationship_transitions")
+        return relationship_transitions_typed(df)
 
     async def communities(self) -> pd.DataFrame:
         """Load and return the communities dataframe with correct types."""

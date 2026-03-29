@@ -23,12 +23,128 @@ from graphrag.index.operations.summarize_communities.text_unit_context.sort_cont
 logger = logging.getLogger(__name__)
 
 
+def _as_iterable_ids(value: object) -> list[str]:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    if isinstance(value, tuple):
+        return [str(item) for item in value]
+    text = str(value).strip()
+    return [text] if text else []
+
+
+def _build_transition_records(
+    community_membership_df: pd.DataFrame,
+    relationship_transitions_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Map relationship transitions to communities by text units and entities.
+
+    We prioritize text-unit overlap (strongest evidence of community membership), and
+    use source-entity overlap as a secondary fallback for rows that may miss text-unit
+    links in incremental pipelines.
+    """
+    if relationship_transitions_df is None or relationship_transitions_df.empty:
+        return pd.DataFrame(columns=[schemas.COMMUNITY_ID, "transition_records"])
+
+    transition_df = relationship_transitions_df.copy()
+    transition_df["changed_at_text_unit_id"] = transition_df[
+        "changed_at_text_unit_id"
+    ].astype(str)
+
+    membership_rows: list[dict[str, int | str]] = []
+    for row in community_membership_df.itertuples(index=False):
+        community_id = int(getattr(row, schemas.COMMUNITY_ID))
+        text_unit_ids = _as_iterable_ids(getattr(row, schemas.TEXT_UNIT_IDS, []))
+        entity_ids = _as_iterable_ids(getattr(row, schemas.ENTITY_IDS, []))
+        for tid in text_unit_ids:
+            membership_rows.append(
+                {
+                    schemas.COMMUNITY_ID: community_id,
+                    "membership_text_unit_id": str(tid),
+                    "membership_entity_title": None,
+                }
+            )
+        for entity in entity_ids:
+            membership_rows.append(
+                {
+                    schemas.COMMUNITY_ID: community_id,
+                    "membership_text_unit_id": None,
+                    "membership_entity_title": str(entity),
+                }
+            )
+
+    if not membership_rows:
+        return pd.DataFrame(columns=[schemas.COMMUNITY_ID, "transition_records"])
+
+    membership_df = pd.DataFrame(membership_rows)
+
+    by_text = transition_df.merge(
+        membership_df.dropna(subset=["membership_text_unit_id"]),
+        left_on="changed_at_text_unit_id",
+        right_on="membership_text_unit_id",
+        how="inner",
+    )
+    by_entity = transition_df.merge(
+        membership_df.dropna(subset=["membership_entity_title"]),
+        left_on="source",
+        right_on="membership_entity_title",
+        how="inner",
+    )
+
+    candidate = pd.concat([by_text, by_entity], ignore_index=True).drop_duplicates(
+        subset=[
+            schemas.COMMUNITY_ID,
+            "source",
+            "relation_slot",
+            "from_target",
+            "to_target",
+            "changed_at_text_unit_id",
+            "conversation_id",
+        ]
+    )
+    if candidate.empty:
+        return pd.DataFrame(columns=[schemas.COMMUNITY_ID, "transition_records"])
+
+    candidate = candidate.sort_values(
+        by=[
+            schemas.COMMUNITY_ID,
+            "changed_at_turn_index",
+            "changed_at_timestamp",
+            "source",
+            "relation_slot",
+        ],
+        na_position="last",
+    )
+    candidate["transition_records"] = candidate.apply(
+        lambda x: {
+            "record_type": "relationship_transition",
+            "source": x.get("source"),
+            "relation_slot": x.get("relation_slot"),
+            "from_target": x.get("from_target"),
+            "to_target": x.get("to_target"),
+            "conversation_id": x.get("conversation_id"),
+            "changed_at_turn_index": x.get("changed_at_turn_index"),
+            "changed_at_timestamp": x.get("changed_at_timestamp"),
+            "previous_text_unit_id": x.get("previous_text_unit_id"),
+            "changed_at_text_unit_id": x.get("changed_at_text_unit_id"),
+        },
+        axis=1,
+    )
+    return (
+        candidate.groupby(schemas.COMMUNITY_ID)["transition_records"]
+        .agg(list)
+        .reset_index()
+    )
+
+
 def build_local_context(
     community_membership_df: pd.DataFrame,
     text_units_df: pd.DataFrame,
     node_df: pd.DataFrame,
     tokenizer: Tokenizer,
     max_context_tokens: int = 16000,
+    relationship_transitions_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """
     Prep context data for community report generation using text unit data.
@@ -85,8 +201,27 @@ def build_local_context(
         .agg({schemas.ALL_CONTEXT: list})
         .reset_index()
     )
-    context_df[schemas.CONTEXT_STRING] = context_df[schemas.ALL_CONTEXT].apply(
-        lambda x: sort_context(x, tokenizer)
+
+    transition_context_df = _build_transition_records(
+        community_membership_df=community_membership_df,
+        relationship_transitions_df=(
+            relationship_transitions_df
+            if relationship_transitions_df is not None
+            else pd.DataFrame()
+        ),
+    )
+    context_df = context_df.merge(transition_context_df, on=schemas.COMMUNITY_ID, how="left")
+    context_df["transition_records"] = context_df["transition_records"].apply(
+        lambda x: x if isinstance(x, list) else []
+    )
+
+    context_df[schemas.CONTEXT_STRING] = context_df.apply(
+        lambda row: sort_context(
+            row[schemas.ALL_CONTEXT],
+            tokenizer,
+            transition_records=row["transition_records"],
+        ),
+        axis=1,
     )
     context_df[schemas.CONTEXT_SIZE] = context_df[schemas.CONTEXT_STRING].apply(
         lambda x: tokenizer.num_tokens(x)
@@ -132,10 +267,14 @@ def build_level_context(
         if invalid_context_df.empty:
             return valid_context_df
 
-        invalid_context_df.loc[:, [schemas.CONTEXT_STRING]] = invalid_context_df[
-            schemas.ALL_CONTEXT
-        ].apply(
-            lambda x: sort_context(x, tokenizer, max_context_tokens=max_context_tokens)
+        invalid_context_df.loc[:, [schemas.CONTEXT_STRING]] = invalid_context_df.apply(
+            lambda row: sort_context(
+                row[schemas.ALL_CONTEXT],
+                tokenizer,
+                max_context_tokens=max_context_tokens,
+                transition_records=row.get("transition_records", []),
+            ),
+            axis=1,
         )
         invalid_context_df.loc[:, [schemas.CONTEXT_SIZE]] = invalid_context_df[
             schemas.CONTEXT_STRING

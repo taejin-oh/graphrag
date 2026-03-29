@@ -47,6 +47,11 @@ async def run_workflow(
     entities = await reader.entities()
     communities = await reader.communities()
     text_units = await reader.text_units()
+    relationship_transitions = (
+        await reader.relationship_transitions()
+        if await context.output_table_provider.has("relationship_transitions")
+        else pd.DataFrame()
+    )
 
     model_config = config.get_completion_model_config(
         config.community_reports.completion_model_id
@@ -65,6 +70,7 @@ async def run_workflow(
         entities,
         communities,
         text_units,
+        relationship_transitions,
         context.callbacks,
         model=model,
         tokenizer=tokenizer,
@@ -85,6 +91,7 @@ async def create_community_reports_text(
     entities: pd.DataFrame,
     communities: pd.DataFrame,
     text_units: pd.DataFrame,
+    relationship_transitions: pd.DataFrame,
     callbacks: WorkflowCallbacks,
     model: "LLMCompletion",
     tokenizer: Tokenizer,
@@ -98,7 +105,12 @@ async def create_community_reports_text(
     nodes = explode_communities(communities, entities)
 
     local_contexts = build_local_context(
-        communities, text_units, nodes, tokenizer, max_input_length
+        communities,
+        text_units,
+        nodes,
+        tokenizer,
+        max_input_length,
+        relationship_transitions_df=relationship_transitions,
     )
 
     community_reports = await summarize_communities(

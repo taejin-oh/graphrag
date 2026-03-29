@@ -19,6 +19,7 @@ def test_graph_community_report_prompt_mentions_temporal_fields():
     assert "TIMELINE EVENTS" in COMMUNITY_REPORT_PROMPT
     assert "SUPERSEDED FACTS" in COMMUNITY_REPORT_PROMPT
     assert "DATE RANGE" in COMMUNITY_REPORT_PROMPT
+    assert "RELATIONSHIP_TRANSITIONS" in COMMUNITY_REPORT_PROMPT
 
 
 def test_read_indexer_text_units_preserves_temporal_attributes():

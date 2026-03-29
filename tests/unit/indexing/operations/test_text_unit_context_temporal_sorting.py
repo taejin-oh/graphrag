@@ -171,3 +171,81 @@ def test_build_local_context_emits_temporal_columns_into_sources_context():
     assert "chunk_index_in_conversation" in header_line
     assert "2026-01-01T09:00:00Z" in first_data_line
     assert ",1,1," in first_data_line
+
+
+def test_build_local_context_emits_relationship_transition_section():
+    community_membership = pd.DataFrame(
+        [
+            {
+                "community": 1,
+                "level": 1,
+                "entity_ids": ["ALICE"],
+                "text_unit_ids": ["t1", "t2"],
+            }
+        ]
+    )
+    text_units = pd.DataFrame(
+        [
+            {
+                "id": "t1",
+                "human_readable_id": 1,
+                "text": "alice worked at company a",
+                "start_turn_index": 1,
+                "end_turn_index": 1,
+                "turn_timestamp_start": "2026-01-01T09:00:00Z",
+                "turn_timestamp_end": "2026-01-01T09:00:30Z",
+                "chunk_index_in_conversation": 0,
+            },
+            {
+                "id": "t2",
+                "human_readable_id": 2,
+                "text": "alice now works at company b",
+                "start_turn_index": 2,
+                "end_turn_index": 2,
+                "turn_timestamp_start": "2026-01-01T10:00:00Z",
+                "turn_timestamp_end": "2026-01-01T10:00:30Z",
+                "chunk_index_in_conversation": 1,
+            },
+        ]
+    )
+    nodes = pd.DataFrame(
+        [
+            {
+                "id": "n1",
+                "title": "ALICE",
+                "community": 1,
+                "degree": 3,
+                "text_unit_ids": ["t1", "t2"],
+            }
+        ]
+    )
+    transitions = pd.DataFrame(
+        [
+            {
+                "source": "ALICE",
+                "relation_slot": "slot_0",
+                "from_target": "COMPANY_A",
+                "to_target": "COMPANY_B",
+                "changed_at_text_unit_id": "t2",
+                "changed_at_turn_index": 2,
+                "changed_at_timestamp": "2026-01-01T10:00:00Z",
+                "previous_text_unit_id": "t1",
+                "previous_turn_index": 1,
+                "previous_timestamp": "2026-01-01T09:00:00Z",
+                "change_index": 0,
+                "conversation_id": "c1",
+            }
+        ]
+    )
+
+    out = build_local_context(
+        community_membership_df=community_membership,
+        text_units_df=text_units,
+        node_df=nodes,
+        tokenizer=_FakeTokenizer(),
+        relationship_transitions_df=transitions,
+    )
+
+    context_string = out.iloc[0][schemas.CONTEXT_STRING]
+    assert "-----RELATIONSHIP_TRANSITIONS-----" in context_string
+    assert "ALICE,slot_0,COMPANY_A,COMPANY_B" in context_string

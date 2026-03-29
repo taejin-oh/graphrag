@@ -26,6 +26,7 @@ _TEMPORAL_ATTRIBUTE_ORDER = [
     "date_range",
     "timeline_events",
     "superseded_facts",
+    "transition_records",
 ]
 
 
@@ -44,7 +45,11 @@ def _format_attribute_value(field: str, value: Any) -> str:
         if len(value) == 2:
             return f"{value[0]} -> {value[1]}"
         return ", ".join(str(item) for item in value)
-    if field in {"timeline_events", "superseded_facts"} and isinstance(value, list):
+    if field in {
+        "timeline_events",
+        "superseded_facts",
+        "transition_records",
+    } and isinstance(value, list):
         chunks: list[str] = []
         for item in value:
             if isinstance(item, dict):
@@ -56,6 +61,15 @@ def _format_attribute_value(field: str, value: Any) -> str:
                     chunks.append(summary)
                 elif explanation:
                     chunks.append(explanation)
+                elif field == "transition_records":
+                    source = str(item.get("source", "")).strip()
+                    from_target = str(item.get("from_target", "")).strip()
+                    to_target = str(item.get("to_target", "")).strip()
+                    changed_at = str(item.get("changed_at_turn_index", "")).strip()
+                    if source and to_target:
+                        chunks.append(
+                            f"{source}: {from_target} -> {to_target} (turn {changed_at or '?'})"
+                        )
             else:
                 chunks.append(str(item))
         return " || ".join(chunk for chunk in chunks if chunk)

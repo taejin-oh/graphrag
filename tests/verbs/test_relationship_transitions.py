@@ -69,6 +69,7 @@ def test_build_relationship_transitions_detects_target_change():
     assert row["from_target"] == "COMPANY_A"
     assert row["to_target"] == "COMPANY_B"
     assert row["changed_at_turn_index"] == 3
+    assert row["conversation_id"] == "c1"
 
 
 def test_build_relationship_transitions_handles_wording_drift():
@@ -242,6 +243,52 @@ def test_build_relationship_transitions_drops_events_without_temporal_metadata()
                 "chunk_index_in_conversation": 0,
                 "chunk_index_in_document": 0,
             }
+        ]
+    )
+
+    transitions = build_relationship_transitions(relationships, text_units)
+    assert transitions.empty
+
+
+def test_build_relationship_transitions_does_not_mix_conversations():
+    relationships = pd.DataFrame(
+        [
+            {
+                "source": "ALICE",
+                "target": "COMPANY_A",
+                "description": ["ALICE works at COMPANY_A"],
+                "text_unit_ids": ["c1_t1"],
+            },
+            {
+                "source": "ALICE",
+                "target": "COMPANY_B",
+                "description": ["ALICE now works at COMPANY_B"],
+                "text_unit_ids": ["c2_t1"],
+            },
+        ]
+    )
+    text_units = pd.DataFrame(
+        [
+            {
+                "id": "c1_t1",
+                "conversation_id": "conversation_1",
+                "start_turn_index": 1,
+                "end_turn_index": 1,
+                "turn_timestamp_start": "2026-01-01T00:00:00Z",
+                "turn_timestamp_end": "2026-01-01T00:00:00Z",
+                "chunk_index_in_conversation": 0,
+                "chunk_index_in_document": 0,
+            },
+            {
+                "id": "c2_t1",
+                "conversation_id": "conversation_2",
+                "start_turn_index": 1,
+                "end_turn_index": 1,
+                "turn_timestamp_start": "2026-01-01T00:00:00Z",
+                "turn_timestamp_end": "2026-01-01T00:00:00Z",
+                "chunk_index_in_conversation": 0,
+                "chunk_index_in_document": 0,
+            },
         ]
     )
 

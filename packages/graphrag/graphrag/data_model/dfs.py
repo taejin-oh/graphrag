@@ -129,6 +129,31 @@ def relationships_typed(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+
+
+def relationship_transitions_typed(df: pd.DataFrame) -> pd.DataFrame:
+    """Return relationship transitions dataframe with correct types."""
+    if "changed_at_turn_index" in df.columns:
+        df["changed_at_turn_index"] = _safe_int(df["changed_at_turn_index"], 0)
+    if "previous_turn_index" in df.columns:
+        df["previous_turn_index"] = _safe_int(df["previous_turn_index"], 0)
+    if "change_index" in df.columns:
+        df["change_index"] = _safe_int(df["change_index"], 0)
+    for column in [
+        "source",
+        "relation_slot",
+        "from_target",
+        "to_target",
+        "changed_at_text_unit_id",
+        "previous_text_unit_id",
+        "conversation_id",
+        "changed_at_timestamp",
+        "previous_timestamp",
+    ]:
+        if column in df.columns:
+            df[column] = df[column].astype(str)
+    return df
+
 def communities_typed(df: pd.DataFrame) -> pd.DataFrame:
     """Return the communities dataframe with correct types, in case it was stored in a weakly-typed format."""
     if SHORT_ID in df.columns:

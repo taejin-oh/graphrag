@@ -31,6 +31,7 @@ def _temporal_sort_key(unit: dict) -> tuple[int, str, int]:
 def get_context_string(
     text_units: list[dict],
     sub_community_reports: list[dict] | None = None,
+    transition_records: list[dict] | None = None,
 ) -> str:
     """Concatenate structured data into a context string."""
     contexts = []
@@ -52,6 +53,30 @@ def get_context_string(
                 f"----REPORTS-----\n{report_df.to_csv(index=False, sep=',')}"
             )
             contexts.append(report_string)
+
+
+    if transition_records:
+        transition_records = [
+            transition
+            for transition in transition_records
+            if transition.get("source") and transition.get("to_target")
+        ]
+        transition_df = pd.DataFrame(transition_records).drop_duplicates()
+        if not transition_df.empty:
+            transition_df.sort_values(
+                by=[
+                    "changed_at_turn_index",
+                    "changed_at_timestamp",
+                    "source",
+                    "relation_slot",
+                ],
+                inplace=True,
+                na_position="last",
+            )
+            transition_string = (
+                f"-----RELATIONSHIP_TRANSITIONS-----\n{transition_df.to_csv(index=False, sep=',')}"
+            )
+            contexts.append(transition_string)
 
     text_units = [
         unit
@@ -75,6 +100,7 @@ def sort_context(
     tokenizer: Tokenizer,
     sub_community_reports: list[dict] | None = None,
     max_context_tokens: int | None = None,
+    transition_records: list[dict] | None = None,
 ) -> str:
     """Sort local context by importance first, then temporal order as tie-breaker."""
     sorted_text_units = sorted(
@@ -92,7 +118,9 @@ def sort_context(
         current_text_units.append(record)
         if max_context_tokens:
             new_context_string = get_context_string(
-                current_text_units, sub_community_reports
+                current_text_units,
+                sub_community_reports,
+                transition_records=transition_records,
             )
             if tokenizer.num_tokens(new_context_string) > max_context_tokens:
                 break
@@ -100,6 +128,10 @@ def sort_context(
             context_string = new_context_string
 
     if context_string == "":
-        return get_context_string(sorted_text_units, sub_community_reports)
+        return get_context_string(
+            sorted_text_units,
+            sub_community_reports,
+            transition_records=transition_records,
+        )
 
     return context_string

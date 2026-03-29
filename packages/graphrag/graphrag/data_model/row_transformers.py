@@ -146,6 +146,34 @@ def transform_relationship_row(
     return _coerce_temporal_evidence_row(row)
 
 
+# -- relationship transitions -----------------------------------------------
+
+def transform_relationship_transition_row(
+    row: dict[str, Any],
+) -> dict[str, Any]:
+    """Coerce types for a relationship transition row."""
+    if "changed_at_turn_index" in row:
+        row["changed_at_turn_index"] = _safe_int(row.get("changed_at_turn_index"), 0)
+    if "previous_turn_index" in row:
+        row["previous_turn_index"] = _safe_int(row.get("previous_turn_index"), 0)
+    if "change_index" in row:
+        row["change_index"] = _safe_int(row.get("change_index"), 0)
+    for column in [
+        "source",
+        "relation_slot",
+        "from_target",
+        "to_target",
+        "changed_at_text_unit_id",
+        "previous_text_unit_id",
+        "conversation_id",
+        "changed_at_timestamp",
+        "previous_timestamp",
+    ]:
+        if column in row and row[column] is not None:
+            row[column] = str(row[column])
+    return row
+
+
 # -- communities (mirrors communities_typed) ------------------------------
 
 

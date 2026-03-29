@@ -37,7 +37,7 @@ def build_relationship_transitions(
         return _empty_transitions_df()
 
     temporal_index = _build_temporal_index(text_units, text_unit_id_column)
-    events: dict[tuple[str, str], list[dict[str, object]]] = defaultdict(list)
+    events: dict[tuple[str, str, str | None], list[dict[str, object]]] = defaultdict(list)
     source_slot_registry: dict[str, list[tuple[str, set[str]]]] = defaultdict(list)
     ordered_rows = sorted(
         relationships.itertuples(index=False),
@@ -68,7 +68,8 @@ def build_relationship_transitions(
 
         for text_unit_id in sorted_ids:
             metadata = temporal_index.get(text_unit_id, {})
-            events[(source, relation_slot)].append({
+            conversation_id = metadata.get(CONVERSATION_ID)
+            events[(source, relation_slot, conversation_id)].append({
                 "source": source,
                 "target": target,
                 "relation_slot": relation_slot,
@@ -81,7 +82,7 @@ def build_relationship_transitions(
             })
 
     transitions: list[dict[str, object]] = []
-    for (source, relation_slot), source_events in events.items():
+    for (source, relation_slot, conversation_id), source_events in events.items():
         ordered = sorted(
             source_events,
             key=lambda item: _temporal_sort_key(str(item["text_unit_id"]), temporal_index),
@@ -117,6 +118,7 @@ def build_relationship_transitions(
                     "previous_turn_index": previous_turn_index,
                     "previous_timestamp": previous_timestamp,
                     "change_index": change_index,
+                    "conversation_id": conversation_id,
                 })
                 change_index += 1
             prev_target = current_target
@@ -127,7 +129,7 @@ def build_relationship_transitions(
 
     result = pd.DataFrame(transitions)
     result.sort_values(
-        by=["source", "relation_slot", "changed_at_turn_index", "changed_at_timestamp"],
+        by=["source", "relation_slot", "conversation_id", "changed_at_turn_index", "changed_at_timestamp"],
         inplace=True,
         na_position="last",
     )
@@ -293,6 +295,7 @@ def _empty_transitions_df() -> pd.DataFrame:
             "changed_at_text_unit_id",
             "changed_at_turn_index",
             "changed_at_timestamp",
+            "conversation_id",
             "previous_text_unit_id",
             "previous_turn_index",
             "previous_timestamp",

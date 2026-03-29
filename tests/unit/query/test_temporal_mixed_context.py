@@ -143,6 +143,15 @@ def test_build_community_context_serializes_temporal_fields_for_summary_table():
             "superseded_facts": [
                 {"summary": "old fact", "explanation": "updated by new evidence"}
             ],
+            "transition_records": [
+                {
+                    "source": "Alice",
+                    "relation_slot": "employment",
+                    "from_target": "Company A",
+                    "to_target": "Company B",
+                    "changed_at_turn_index": 3,
+                }
+            ],
         },
     )
 
@@ -157,15 +166,19 @@ def test_build_community_context_serializes_temporal_fields_for_summary_table():
     )
 
     reports_df = context_data["reports"]
-    assert reports_df.columns.tolist()[:6] == [
+    assert reports_df.columns.tolist()[:7] == [
         "id",
         "title",
         "current_state",
         "date_range",
         "timeline_events",
         "superseded_facts",
+        "transition_records",
     ]
     assert reports_df.iloc[0]["current_state"] == "state now"
     assert reports_df.iloc[0]["date_range"] == "2026-01-01 -> 2026-01-31"
     assert "event 1: history one" in reports_df.iloc[0]["timeline_events"]
     assert "old fact: updated by new evidence" in reports_df.iloc[0]["superseded_facts"]
+    assert "Alice: Company A -> Company B (turn 3)" in reports_df.iloc[0][
+        "transition_records"
+    ]
