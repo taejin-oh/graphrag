@@ -34,9 +34,22 @@ def _as_iterable_ids(value: object) -> list[str]:
     return [text] if text else []
 
 
+def _as_transition_list(value: object) -> list[dict]:
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    if isinstance(value, tuple):
+        return [item for item in value if isinstance(item, dict)]
+    if hasattr(value, "tolist"):
+        converted = value.tolist()
+        if isinstance(converted, list):
+            return [item for item in converted if isinstance(item, dict)]
+    return []
+
+
 def _build_transition_records(
     community_membership_df: pd.DataFrame,
     relationship_transitions_df: pd.DataFrame,
+    node_df: pd.DataFrame,
 ) -> pd.DataFrame:
     """Map relationship transitions to communities by text units and entities.
 
@@ -52,7 +65,15 @@ def _build_transition_records(
         "changed_at_text_unit_id"
     ].astype(str)
 
-    membership_rows: list[dict[str, int | str]] = []
+    entity_id_to_title: dict[str, str] = {}
+    if not node_df.empty and schemas.ID in node_df.columns and schemas.TITLE in node_df.columns:
+        for row in node_df.itertuples(index=False):
+            entity_id = str(getattr(row, schemas.ID, "") or "").strip()
+            entity_title = str(getattr(row, schemas.TITLE, "") or "").strip()
+            if entity_id and entity_title:
+                entity_id_to_title[entity_id] = entity_title
+
+    membership_rows: list[dict[str, int | str | None]] = []
     for row in community_membership_df.itertuples(index=False):
         community_id = int(getattr(row, schemas.COMMUNITY_ID))
         text_unit_ids = _as_iterable_ids(getattr(row, schemas.TEXT_UNIT_IDS, []))
@@ -66,11 +87,12 @@ def _build_transition_records(
                 }
             )
         for entity in entity_ids:
+            entity_id = str(entity)
             membership_rows.append(
                 {
                     schemas.COMMUNITY_ID: community_id,
                     "membership_text_unit_id": None,
-                    "membership_entity_title": str(entity),
+                    "membership_entity_title": entity_id_to_title.get(entity_id, entity_id),
                 }
             )
 
@@ -85,6 +107,12 @@ def _build_transition_records(
         right_on="membership_text_unit_id",
         how="inner",
     )
+    by_previous_text = transition_df.merge(
+        membership_df.dropna(subset=["membership_text_unit_id"]),
+        left_on="previous_text_unit_id",
+        right_on="membership_text_unit_id",
+        how="inner",
+    )
     by_entity = transition_df.merge(
         membership_df.dropna(subset=["membership_entity_title"]),
         left_on="source",
@@ -92,7 +120,10 @@ def _build_transition_records(
         how="inner",
     )
 
-    candidate = pd.concat([by_text, by_entity], ignore_index=True).drop_duplicates(
+    candidate = pd.concat(
+        [by_text, by_previous_text, by_entity],
+        ignore_index=True,
+    ).drop_duplicates(
         subset=[
             schemas.COMMUNITY_ID,
             "source",
@@ -152,7 +183,7 @@ def build_local_context(
     Community membership has columns [COMMUNITY_ID, COMMUNITY_LEVEL, ENTITY_IDS, RELATIONSHIP_IDS, TEXT_UNIT_IDS]
     """
     # get text unit details, include short_id, text, and entity degree (sum of degrees of the text unit's nodes that belong to a community)
-    prepped_text_units_df = prep_text_units(text_units_df, node_df)
+    prepped_text_units_df = prep_text_units(text_units_df, node_df.copy())
     prepped_text_units_df = prepped_text_units_df.rename(
         columns={
             schemas.ID: schemas.TEXT_UNIT_IDS,
@@ -209,11 +240,10 @@ def build_local_context(
             if relationship_transitions_df is not None
             else pd.DataFrame()
         ),
+        node_df=node_df,
     )
     context_df = context_df.merge(transition_context_df, on=schemas.COMMUNITY_ID, how="left")
-    context_df["transition_records"] = context_df["transition_records"].apply(
-        lambda x: x if isinstance(x, list) else []
-    )
+    context_df["transition_records"] = context_df["transition_records"].apply(_as_transition_list)
 
     context_df[schemas.CONTEXT_STRING] = context_df.apply(
         lambda row: sort_context(
