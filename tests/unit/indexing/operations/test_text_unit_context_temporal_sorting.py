@@ -137,7 +137,11 @@ def test_build_local_context_emits_temporal_columns_into_sources_context():
 
     context_string = out.iloc[0][schemas.CONTEXT_STRING]
     header_line = context_string.splitlines()[1]
+    first_data_line = context_string.splitlines()[2]
     assert "start_turn_index" in header_line
     assert "end_turn_index" in header_line
     assert "turn_timestamp_start" in header_line
     assert "turn_timestamp_end" in header_line
+    assert "chunk_index_in_conversation" in header_line
+    assert "2026-01-01T09:00:00Z" in first_data_line
+    assert ",1,1," in first_data_line
