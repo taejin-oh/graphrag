@@ -17,6 +17,9 @@ from graphrag.data_model.data_reader import DataReader
 from graphrag.index.operations.extract_graph.extract_graph import (
     extract_graph as extractor,
 )
+from graphrag.index.operations.extract_graph.relationship_transitions import (
+    build_relationship_transitions,
+)
 from graphrag.index.operations.summarize_descriptions.summarize_descriptions import (
     summarize_descriptions,
 )
@@ -76,6 +79,10 @@ async def run_workflow(
 
     await context.output_table_provider.write_dataframe("entities", entities)
     await context.output_table_provider.write_dataframe("relationships", relationships)
+    relationship_transitions = build_relationship_transitions(relationships, text_units)
+    await context.output_table_provider.write_dataframe(
+        "relationship_transitions", relationship_transitions
+    )
 
     if config.snapshots.raw_graph:
         await context.output_table_provider.write_dataframe(
