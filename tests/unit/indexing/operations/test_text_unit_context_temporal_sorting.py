@@ -56,7 +56,7 @@ def test_prep_text_units_includes_temporal_fields_in_all_details():
     assert details[schemas.TURN_TIMESTAMP_END] == "2026-01-01T09:00:30Z"
 
 
-def test_sort_context_prioritizes_temporal_order_over_degree():
+def test_sort_context_prioritizes_entity_degree_over_temporal_order():
     context = [
         {
             "id": 2,
@@ -70,6 +70,32 @@ def test_sort_context_prioritizes_temporal_order_over_degree():
             "id": 1,
             "text": "earlier lower degree",
             "entity_degree": 1,
+            "start_turn_index": 1,
+            "turn_timestamp_start": "2026-01-01T09:00:00Z",
+            "chunk_index_in_conversation": 0,
+        },
+    ]
+
+    out = sort_context(context, tokenizer=_FakeTokenizer())
+
+    first_data_line = out.splitlines()[2]
+    assert first_data_line.startswith("2,")
+
+
+def test_sort_context_uses_temporal_order_as_tie_breaker():
+    context = [
+        {
+            "id": 2,
+            "text": "later",
+            "entity_degree": 10,
+            "start_turn_index": 5,
+            "turn_timestamp_start": "2026-01-01T10:00:00Z",
+            "chunk_index_in_conversation": 1,
+        },
+        {
+            "id": 1,
+            "text": "earlier",
+            "entity_degree": 10,
             "start_turn_index": 1,
             "turn_timestamp_start": "2026-01-01T09:00:00Z",
             "chunk_index_in_conversation": 0,

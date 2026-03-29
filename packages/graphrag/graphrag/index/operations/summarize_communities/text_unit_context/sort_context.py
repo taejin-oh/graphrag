@@ -76,12 +76,12 @@ def sort_context(
     sub_community_reports: list[dict] | None = None,
     max_context_tokens: int | None = None,
 ) -> str:
-    """Sort local context (list of text units) by time first, then degree."""
+    """Sort local context by importance first, then temporal order as tie-breaker."""
     sorted_text_units = sorted(
         local_context,
         key=lambda x: (
-            _temporal_sort_key(x),
             -float(x.get(schemas.ENTITY_DEGREE) or 0),
+            _temporal_sort_key(x),
             str(x.get("id") or ""),
         ),
     )
