@@ -152,6 +152,35 @@ python scripts/run_experimental_local_context_matrix.py \
   --trace-show-context
 ```
 
+`graphrag query --method local`를 직접 사용할 때도 실행 중 `assembled_context`를 출력할 수 있습니다.
+
+```bash
+graphrag query "Who is Scrooge and what are his main relationships?" \
+  --method local \
+  --root . \
+  --data ./output \
+  --show-assembled-context
+```
+
+> 주의: 이 출력은 `local_search.experimental_context_mode=true` 및
+> `local_search.experimental_log_context_payload=true`가 켜져 있어야 의미 있는 payload가 표시됩니다.
+>
+> 출력이 너무 길면 `--hide-assembled-context`로 끌 수 있습니다.
+
+출력 예시:
+
+```text
+===== assembled_context =====
+condition_id: manual_q001_c01
+assembled_context_tokens: 1234
+warnings: []
+[Community]
+...
+[Relationships]
+...
+===== /assembled_context =====
+```
+
 현재 디렉터리가 프로젝트 루트라면 아래처럼 더 짧게도 가능:
 
 ```bash

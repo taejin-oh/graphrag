@@ -118,6 +118,7 @@ def run_local_search(
     streaming: bool,
     query: str,
     verbose: bool,
+    show_assembled_context: bool = False,
 ):
     """Perform a local search with a given query.
 
@@ -185,7 +186,10 @@ def run_local_search(
             print()
             return full_response, context_data
 
-        return asyncio.run(run_streaming_search())
+        response, context_data = asyncio.run(run_streaming_search())
+        if show_assembled_context:
+            _print_assembled_context(context_data)
+        return response, context_data
     # not streaming
     response, context_data = asyncio.run(
         api.local_search(
@@ -204,7 +208,36 @@ def run_local_search(
     )
     print(response)
 
+    if show_assembled_context:
+        _print_assembled_context(context_data)
+
     return response, context_data
+
+
+def _print_assembled_context(context_data: dict[str, Any]) -> None:
+    experimental_context = context_data.get("experimental_context")
+    if experimental_context is None or not hasattr(experimental_context, "empty"):
+        print("[assembled_context] experimental_context payload not found.")
+        return
+    if experimental_context.empty:
+        print("[assembled_context] experimental_context payload is empty.")
+        return
+
+    payload = experimental_context.iloc[0].to_dict()
+    condition_id = payload.get("condition_id", "")
+    tokens = payload.get("assembled_context_tokens", "")
+    warnings = payload.get("warnings", [])
+    assembled_context = str(payload.get("assembled_context", ""))
+
+    print("\n===== assembled_context =====")
+    if condition_id:
+        print(f"condition_id: {condition_id}")
+    if tokens != "":
+        print(f"assembled_context_tokens: {tokens}")
+    if warnings:
+        print(f"warnings: {warnings}")
+    print(assembled_context)
+    print("===== /assembled_context =====")
 
 
 def run_drift_search(

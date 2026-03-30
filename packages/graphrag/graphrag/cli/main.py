@@ -427,6 +427,14 @@ def _query_cli(
         "--streaming/--no-streaming",
         help="Print the response in a streaming manner.",
     ),
+    show_assembled_context: bool = typer.Option(
+        False,
+        "--show-assembled-context/--hide-assembled-context",
+        help=(
+            "When using --method local with experimental context mode, "
+            "print assembled_context from context payload."
+        ),
+    ),
 ) -> None:
     """Query a knowledge graph index."""
     from graphrag.cli.query import (
@@ -446,6 +454,7 @@ def _query_cli(
                 streaming=streaming,
                 query=query,
                 verbose=verbose,
+                show_assembled_context=show_assembled_context,
             )
         case SearchMethod.GLOBAL:
             run_global_search(
