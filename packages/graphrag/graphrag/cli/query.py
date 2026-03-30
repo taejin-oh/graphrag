@@ -228,15 +228,24 @@ def _print_assembled_context(context_data: dict[str, Any]) -> None:
     tokens = payload.get("assembled_context_tokens", "")
     warnings = payload.get("warnings", [])
     assembled_context = str(payload.get("assembled_context", ""))
+    selected_community_ids = payload.get("selected_community_ids", [])
+    mapped_entities_count = payload.get("mapped_entities_count", "")
 
     print("\n===== assembled_context =====")
     if condition_id:
         print(f"condition_id: {condition_id}")
     if tokens != "":
         print(f"assembled_context_tokens: {tokens}")
+    if mapped_entities_count != "":
+        print(f"mapped_entities_count: {mapped_entities_count}")
+    if selected_community_ids:
+        print(f"selected_community_ids: {selected_community_ids}")
     if warnings:
         print(f"warnings: {warnings}")
-    print(assembled_context)
+    if assembled_context.strip():
+        print(assembled_context)
+    else:
+        print("[assembled_context] assembled_context is empty.")
     print("===== /assembled_context =====")
 
 

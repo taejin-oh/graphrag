@@ -18,6 +18,8 @@ def test_print_assembled_context_outputs_payload(capsys):
                 {
                     "condition_id": "manual_q001_c01",
                     "assembled_context_tokens": 123,
+                    "mapped_entities_count": 2,
+                    "selected_community_ids": ["c1"],
                     "warnings": ["warn-1"],
                     "assembled_context": "A\nB",
                 }
@@ -31,6 +33,8 @@ def test_print_assembled_context_outputs_payload(capsys):
     assert "===== assembled_context =====" in out
     assert "condition_id: manual_q001_c01" in out
     assert "assembled_context_tokens: 123" in out
+    assert "mapped_entities_count: 2" in out
+    assert "selected_community_ids: ['c1']" in out
     assert "warnings: ['warn-1']" in out
     assert "A\nB" in out
     assert "===== /assembled_context =====" in out
@@ -40,6 +44,27 @@ def test_print_assembled_context_handles_missing_payload(capsys):
     _print_assembled_context({})
     out = capsys.readouterr().out
     assert "experimental_context payload not found" in out
+
+
+def test_print_assembled_context_handles_empty_assembled_context(capsys):
+    import pandas as pd
+
+    context_data = {
+        "experimental_context": pd.DataFrame(
+            [
+                {
+                    "condition_id": "manual_q001_c02",
+                    "assembled_context_tokens": 0,
+                    "assembled_context": "",
+                }
+            ]
+        )
+    }
+
+    _print_assembled_context(context_data)
+    out = capsys.readouterr().out
+    assert "assembled_context_tokens: 0" in out
+    assert "[assembled_context] assembled_context is empty." in out
 
 
 def test_query_cli_passes_show_assembled_context_flag(monkeypatch, tmp_path):
