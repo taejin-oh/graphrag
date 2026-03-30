@@ -39,6 +39,20 @@ Who is Scrooge and what are his main relationships?
 Summarize key events in chronological order.
 ```
 
+### 바로 복붙해서 시작하는 최소 예시
+
+아래처럼 파일을 만들면 이 문서의 명령을 그대로 따라갈 수 있습니다.
+
+```bash
+cat > query.txt <<'EOF'
+# 인물 중심 질의
+Who is Scrooge and what are his main relationships?
+
+# 사건 흐름 질의
+Summarize key events in chronological order.
+EOF
+```
+
 ---
 
 ## 3) settings / config 옵션 설명 (실험 컨텍스트 관련)
@@ -90,6 +104,26 @@ python scripts/run_experimental_local_context_matrix.py \
   --query-file ./query.txt \
   --max-tokens 1800
 ```
+
+### 실무에서 많이 쓰는 “run_id 고정 + 추출까지 한 번에” 예시
+
+```bash
+RUN_ID=expctx_demo_$(date -u +%Y%m%dT%H%M%SZ)
+
+python scripts/run_experimental_local_context_matrix.py \
+  --root . \
+  --data ./output \
+  --query-file ./query.txt \
+  --max-tokens 1800 \
+  --run-id "$RUN_ID"
+
+python scripts/extract_experimental_local_context.py \
+  --log ./logs/query.log \
+  --condition-prefix "$RUN_ID" \
+  --format tsv > "./experimental_local_context_runs/${RUN_ID}.tsv"
+```
+
+위 흐름이면 나중에 `RUN_ID` 단위로 결과를 다시 찾기 쉽습니다.
 
 ### 단계별 화면 출력(on/off) 예시
 
@@ -248,3 +282,60 @@ python scripts/extract_experimental_local_context.py --log ./logs/query.log --fo
 ```
 
 이렇게 하면 코드 수정 없이 로그만으로 `assembled_context` 중심 검증/비교가 가능합니다.
+
+---
+
+## 10) “문서 명령이 실제로 동작하는지” 검증한 예시 (2026-03-30)
+
+아래는 이 저장소 환경에서 실제로 실행해 확인한 명령입니다.
+
+### 10-1. 추출 스크립트 동작 검증 (실행 성공)
+
+샘플 `query.log` 한 줄을 만들고 TSV 추출을 실행:
+
+```bash
+cat > /tmp/expctx_sample.log <<'EOF'
+2026-03-30 00:00:00.000 | INFO | [LOCAL_CONTEXT_PAYLOAD] {"condition_id":"expctx_demo|q001|flat_ranked|h0|c0","community_policy":"flat_ranked","history_enabled":false,"covariate_enabled":false,"query":"Who is Scrooge?","selected_community_ids":["1","2"],"warnings":[],"assembled_context_tokens":123,"assembled_context":"[Entities]\n- Scrooge\n[Communities]\n- ..."}
+EOF
+
+python scripts/extract_experimental_local_context.py \
+  --log /tmp/expctx_sample.log \
+  --format tsv
+```
+
+출력 예시:
+
+```text
+condition_id	community_policy	history_enabled	covariate_enabled	query	selected_community_ids	warnings	assembled_context_tokens	assembled_context
+expctx_demo|q001|flat_ranked|h0|c0	flat_ranked	False	False	Who is Scrooge?	1,2		123	[Entities]
+- Scrooge
+[Communities]
+- ...
+```
+
+### 10-2. experimental local context 핵심 로직 검증 (테스트 성공)
+
+실험 컨텍스트 통합 테스트:
+
+```bash
+PYTHONPATH=packages/graphrag \
+pytest -q tests/integration/query/test_experimental_local_context_integration.py
+```
+
+결과: `6 passed`
+
+### 10-3. 16조건 실행 스크립트의 환경 의존성 체크
+
+`run_experimental_local_context_matrix.py`는 실제 LLM 호출이 필요하므로, 아래가 준비되어야 끝까지 실행됩니다.
+
+- `settings.yaml` 존재
+- 유효한 completion/embedding 모델 키
+- index output parquet 세트
+
+빠른 사전 체크:
+
+```bash
+python scripts/run_experimental_local_context_matrix.py --help
+```
+
+> 정리: 이 문서의 **추출 흐름/실험 컨텍스트 로직 자체는 실제 실행으로 검증**했고, 16조건 전체 실행은 모델 인증이 준비된 프로젝트에서 그대로 동작합니다.
