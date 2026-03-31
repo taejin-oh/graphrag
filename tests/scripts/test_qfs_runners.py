@@ -315,8 +315,10 @@ def test_query_main_generates_condition_outputs_and_abstention_null(
     for condition in conditions:
         csv_path = run_root / condition / "results.csv"
         jsonl_path = run_root / condition / "results.jsonl"
+        json_path = run_root / condition / "results.json"
         assert csv_path.exists()
         assert jsonl_path.exists()
+        assert json_path.exists()
 
         with csv_path.open("r", encoding="utf-8") as f:
             rows = list(csv.DictReader(f))
@@ -338,6 +340,11 @@ def test_query_main_generates_condition_outputs_and_abstention_null(
             jsonl_rows = [json.loads(line) for line in f if line.strip()]
         fact_jsonl = next(r for r in jsonl_rows if r["question_type"] == "fact")
         assert fact_jsonl["selected_community_ids"] == ["10", "20"]
+
+        pretty_rows = json.loads(json_path.read_text(encoding="utf-8"))
+        assert isinstance(pretty_rows, list)
+        assert len(pretty_rows) == 2
+        assert "\n  {" in json_path.read_text(encoding="utf-8")
 
 
 def test_query_iter_targets_with_test_id_filter(tmp_path: Path) -> None:

@@ -158,6 +158,11 @@ python scripts/run_qfs_index.py --test-case 100K --force-clean
 - `--debug`: 질문 단위 진행 로그 출력
 - `--show-assembled-context`: `--debug`와 함께 질문별 assembled_context 본문 출력
 
+출력 파일:
+- `results.csv`
+- `results.jsonl` (라인 단위 처리용)
+- `results.json` (들여쓰기 적용, 사람이 읽기 쉬운 포맷)
+
 예시:
 
 ```bash

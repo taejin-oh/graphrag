@@ -217,6 +217,12 @@ def _write_condition_outputs(rows: list[dict[str, Any]], out_dir: Path) -> None:
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
+    json_path = out_dir / "results.json"
+    json_path.write_text(
+        json.dumps(rows, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
