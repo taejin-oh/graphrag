@@ -72,6 +72,8 @@ async def _run_single_index(
     method: IndexingMethod,
     verbose: bool,
     skip_validation: bool,
+    input_type: str,
+    input_file_pattern: str,
 ) -> None:
     logs_dir = test_id_dir / "logs"
     output_dir = test_id_dir / "output"
@@ -80,6 +82,10 @@ async def _run_single_index(
     _recreate_dir(output_dir)
 
     cli_overrides = {
+        "input": {
+            "type": input_type,
+            "file_pattern": input_file_pattern,
+        },
         "input_storage": {"base_dir": str(test_id_dir)},
         "output_storage": {"base_dir": str(output_dir)},
         "reporting": {"base_dir": str(logs_dir)},
@@ -113,6 +119,17 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("input_chat"),
         help="input_chat 루트 경로",
+    )
+    parser.add_argument(
+        "--input-type",
+        choices=["text", "csv", "json"],
+        default="json",
+        help="index 입력 파일 타입(기본: json)",
+    )
+    parser.add_argument(
+        "--input-file-pattern",
+        default=r".*\\.json$",
+        help=r"index 입력 파일 regex(기본: .*\\.json$)",
     )
     parser.add_argument("--test-case", default=None, help="특정 test_case만 실행")
     parser.add_argument(
@@ -165,6 +182,8 @@ def main() -> int:
                 method=method,
                 verbose=args.verbose,
                 skip_validation=args.skip_validation,
+                input_type=args.input_type,
+                input_file_pattern=args.input_file_pattern,
             )
         )
         print(f"[DONE] {test_case}/{test_id}")
