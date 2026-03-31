@@ -161,11 +161,17 @@ python scripts/run_qfs_index.py --test-case 100K --force-clean
   - `id`, `title`, `nid`, `[Data: ...]` 제거
   - `timeline_events`, `superseded_facts`는 summary 위주로 축약
 - `--raw-assembled-context`: 원문 assembled_context를 그대로 저장/출력
+- `--max-tokens`: `experimental_context_max_tokens`를 CLI에서 직접 지정
 
 출력 파일:
-- `results.csv`
-- `results.jsonl` (라인 단위 처리용)
-- `results.json` (들여쓰기 적용, 사람이 읽기 쉬운 포맷)
+- `--max-tokens` 미지정 시
+  - `results.csv`
+  - `results.jsonl` (라인 단위 처리용)
+  - `results.json` (들여쓰기 적용, 사람이 읽기 쉬운 포맷)
+- `--max-tokens N` 지정 시
+  - `results_maxN.csv`
+  - `results_maxN.jsonl`
+  - `results_maxN.json`
 
 예시:
 
@@ -182,6 +188,13 @@ python scripts/run_qfs_query_and_aggregate.py \
   --test-ids 001 \
   --debug \
   --show-assembled-context
+
+# 토큰 상한을 걸고 실행(파일명에 _max1200 suffix 반영)
+python scripts/run_qfs_query_and_aggregate.py \
+  --test-case case_a \
+  --test-ids 001 \
+  --max-tokens 1200 \
+  --run-id qfs_case_a_t1200
 ```
 
 ---
@@ -198,6 +211,7 @@ python scripts/run_qfs_query_and_aggregate.py \
 - 각 index/query 단위 완료 후 10분(`600초`) 대기 (기본값, 마지막 완료 직후는 대기 없음)
 - 실패 대상은 라운드 종료 후 재시도하여 모두 성공할 때까지 반복
 - `--max-rounds`로 재시도 상한 설정 가능 (`0`이면 무제한)
+- `--max-tokens` 지정 시 하위 `run_qfs_query_and_aggregate.py` 호출로 그대로 전달
 - 진행 로그는 `qfs_log/<run_id>/progress_log.txt`에 기록되고 콘솔에는 노란색으로 출력
 
 예시:
@@ -206,7 +220,8 @@ python scripts/run_qfs_query_and_aggregate.py \
 python scripts/run_qfs_total_pipeline.py \
   --test-case case_a \
   --test-ids 001 003 \
-  --run-id qfs_total_case_a
+  --max-tokens 1200 \
+  --run-id qfs_total_case_a_t1200
 ```
 
 ---
