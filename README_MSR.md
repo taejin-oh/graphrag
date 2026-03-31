@@ -162,6 +162,8 @@ python scripts/run_qfs_index.py --test-case 100K --force-clean
   - `timeline_events`, `superseded_facts`는 summary 위주로 축약
 - `--raw-assembled-context`: 원문 assembled_context를 그대로 저장/출력
 - `--max-tokens`: `experimental_context_max_tokens`를 CLI에서 직접 지정
+  - 단일 값: `--max-tokens 1200`
+  - 다중 값: `--max-tokens 500 1000 2000` (각 값별로 전체 policy를 1회씩 실행)
 
 출력 파일:
 - `--max-tokens` 미지정 시
@@ -172,6 +174,8 @@ python scripts/run_qfs_index.py --test-case 100K --force-clean
   - `results_maxN.csv`
   - `results_maxN.jsonl`
   - `results_maxN.json`
+- `--max-tokens 500 1000 2000`처럼 다중 지정 시에는 동일 condition 디렉터리에
+  `results_max500.*`, `results_max1000.*`, `results_max2000.*`가 함께 생성됨
 
 예시:
 
@@ -195,6 +199,13 @@ python scripts/run_qfs_query_and_aggregate.py \
   --test-ids 001 \
   --max-tokens 1200 \
   --run-id qfs_case_a_t1200
+
+# 여러 토큰 상한으로 순차 실행(각 토큰값마다 전체 policy 반복)
+python scripts/run_qfs_query_and_aggregate.py \
+  --test-case case_a \
+  --test-ids 001 \
+  --max-tokens 500 1000 2000 \
+  --run-id qfs_case_a_multi_t
 ```
 
 ---
@@ -212,6 +223,7 @@ python scripts/run_qfs_query_and_aggregate.py \
 - 실패 대상은 라운드 종료 후 재시도하여 모두 성공할 때까지 반복
 - `--max-rounds`로 재시도 상한 설정 가능 (`0`이면 무제한)
 - `--max-tokens` 지정 시 하위 `run_qfs_query_and_aggregate.py` 호출로 그대로 전달
+  - 예: `--max-tokens 500 1000 2000`이면 token 값마다 전체 policy set 실행
 - 진행 로그는 `qfs_log/<run_id>/progress_log.txt`에 기록되고 콘솔에는 노란색으로 출력
 
 예시:

@@ -108,7 +108,7 @@ def _build_query_cmd(
     input_chat_root: Path,
     policy: str,
     run_id: str,
-    max_tokens: int | None,
+    max_tokens: list[int] | None,
 ) -> list[str]:
     cmd = [
         sys.executable,
@@ -124,8 +124,8 @@ def _build_query_cmd(
         "--run-id",
         run_id,
     ]
-    if max_tokens is not None:
-        cmd.extend(["--max-tokens", str(max_tokens)])
+    if max_tokens:
+        cmd.extend(["--max-tokens", *(str(token) for token in max_tokens)])
     return cmd
 
 
@@ -142,7 +142,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="query policy 순서(쉼표 구분). 기본: pyramid,flat_ranked,leaf_only,leaf_then_parent_mix",
     )
     parser.add_argument("--run-id", default=None, help="run id prefix (기본: UTC timestamp)")
-    parser.add_argument("--max-tokens", type=int, default=None, help="query 단계 experimental_context_max_tokens")
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        nargs="+",
+        default=None,
+        help="query 단계 experimental_context_max_tokens 목록 (예: --max-tokens 500 1000 2000)",
+    )
     parser.add_argument(
         "--sleep-seconds",
         type=int,

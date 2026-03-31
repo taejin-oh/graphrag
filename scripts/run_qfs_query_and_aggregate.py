@@ -338,7 +338,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-id", default=None, help="실행 ID (기본: UTC timestamp)")
     parser.add_argument("--community-level", type=int, default=2, help="local search community level")
     parser.add_argument("--response-type", default="Multiple Paragraphs", help="local search response_type")
-    parser.add_argument("--max-tokens", type=int, default=None, help="experimental_context_max_tokens")
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        nargs="+",
+        default=None,
+        help="experimental_context_max_tokens 목록 (예: --max-tokens 500 1000 2000)",
+    )
     parser.add_argument(
         "--raw-assembled-context",
         action="store_true",
@@ -373,13 +379,15 @@ def main() -> int:
     print(f"[INFO] repo_root={REPO_ROOT}")
     print(f"[INFO] targets={len(targets)}")
     print(f"[INFO] run_root={run_root}")
+    max_tokens_values: list[int | None] = args.max_tokens if args.max_tokens else [None]
+
     if args.debug:
         print(f"[DBG] policies={policies}")
         print(f"[DBG] test_case_filter={args.test_case}")
         print(f"[DBG] test_id_filters={args.test_ids}")
-        print(f"[DBG] max_tokens={args.max_tokens}")
+        print(f"[DBG] max_tokens_values={max_tokens_values}")
 
-    results_by_condition: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    results_by_condition: dict[tuple[str, int | None], list[dict[str, Any]]] = defaultdict(list)
 
     for test_case, test_id, test_id_dir in targets:
         probing_path = test_id_dir / "probing_questions" / "probing_questions.json"
@@ -396,107 +404,112 @@ def main() -> int:
                 if args.debug:
                     print(f"[DBG] condition={condition}")
 
-                for question_type, question_items in questions_by_type.items():
-                    if not isinstance(question_items, list):
-                        raise ValueError(
-                            f"Invalid question list at {probing_path}: key={question_type}"
-                        )
-
-                    for question_index, item in enumerate(question_items, start=1):
-                        if question_type == "abstention":
-                            if args.debug:
-                                print(f"  [DBG] skip abstention {question_type}[{question_index}]")
-                            row = _null_row(
-                                test_case=test_case,
-                                test_id=test_id,
-                                question_type=question_type,
-                                question_index=question_index,
-                                community_policy=policy,
-                            )
-                            results_by_condition[condition].append(row)
-                            continue
-
-                        question = item.get("question") if isinstance(item, dict) else None
-                        if not question:
+                for max_tokens in max_tokens_values:
+                    if args.debug:
+                        print(f"[DBG] max_tokens={max_tokens if max_tokens is not None else 'default'}")
+                    key = (condition, max_tokens)
+                    for question_type, question_items in questions_by_type.items():
+                        if not isinstance(question_items, list):
                             raise ValueError(
-                                f"Missing 'question' in {probing_path} ({question_type}[{question_index}])"
+                                f"Invalid question list at {probing_path}: key={question_type}"
                             )
-                        if args.debug:
-                            print(f"  [DBG] start {question_type}[{question_index}]")
 
-                        condition_id = (
-                            f"{run_id}|{test_case}|{test_id}|{policy}|c{int(covariate_enabled)}"
-                            f"|{question_type}|q{question_index:03d}"
-                        )
-
-                        if args.dry_run:
-                            print(
-                                f"[DRY-RUN] {test_case}/{test_id} {condition} "
-                                f"{question_type}[{question_index}] {question[:80]}"
-                            )
-                            continue
-
-                        payload = asyncio.run(
-                            _run_single_query(
-                                repo_root=REPO_ROOT,
-                                output_dir=output_dir,
-                                question=question,
-                                community_policy=policy,
-                                covariate_enabled=covariate_enabled,
-                                community_level=args.community_level,
-                                response_type=args.response_type,
-                                condition_id=condition_id,
-                                max_tokens=args.max_tokens,
-                            )
-                        )
-
-                        selected_community_ids = []
-                        assembled_context_tokens: int | str = NULL
-                        assembled_context: str = NULL
-                        if payload is not None:
-                            selected_community_ids = payload.get("selected_community_ids") or []
-                            assembled_context_tokens = payload.get("assembled_context_tokens", NULL)
-                            assembled_context = payload.get("assembled_context") or ""
-                            if not args.raw_assembled_context:
-                                assembled_context = _to_readable_assembled_context(
-                                    str(assembled_context),
-                                    slim=True,
+                        for question_index, item in enumerate(question_items, start=1):
+                            if question_type == "abstention":
+                                if args.debug:
+                                    print(f"  [DBG] skip abstention {question_type}[{question_index}]")
+                                row = _null_row(
+                                    test_case=test_case,
+                                    test_id=test_id,
+                                    question_type=question_type,
+                                    question_index=question_index,
+                                    community_policy=policy,
                                 )
-                        if args.debug:
-                            print(
-                                "  [DBG] done "
-                                f"tokens={assembled_context_tokens} "
-                                f"selected_community_ids={selected_community_ids}"
+                                results_by_condition[key].append(row)
+                                continue
+
+                            question = item.get("question") if isinstance(item, dict) else None
+                            if not question:
+                                raise ValueError(
+                                    f"Missing 'question' in {probing_path} ({question_type}[{question_index}])"
+                                )
+                            if args.debug:
+                                print(f"  [DBG] start {question_type}[{question_index}]")
+
+                            token_key = f"t{max_tokens}" if max_tokens is not None else "tdefault"
+                            condition_id = (
+                                f"{run_id}|{test_case}|{test_id}|{policy}|c{int(covariate_enabled)}"
+                                f"|{token_key}|{question_type}|q{question_index:03d}"
                             )
-                            if args.show_assembled_context:
-                                print("  [DBG] assembled_context:")
+
+                            if args.dry_run:
                                 print(
-                                    assembled_context
-                                    if str(assembled_context).strip()
-                                    else "  [empty]"
+                                    f"[DRY-RUN] {test_case}/{test_id} {condition} max_tokens={max_tokens} "
+                                    f"{question_type}[{question_index}] {question[:80]}"
                                 )
+                                continue
 
-                        row = {
-                            "test_case": test_case,
-                            "test_id": test_id,
-                            "question_type": question_type,
-                            "question_index": question_index,
-                            "question": question,
-                            "community_policy": policy,
-                            "selected_community_ids": selected_community_ids,
-                            "assembled_context_tokens": assembled_context_tokens,
-                            "assembled_context": assembled_context,
-                        }
-                        results_by_condition[condition].append(row)
+                            payload = asyncio.run(
+                                _run_single_query(
+                                    repo_root=REPO_ROOT,
+                                    output_dir=output_dir,
+                                    question=question,
+                                    community_policy=policy,
+                                    covariate_enabled=covariate_enabled,
+                                    community_level=args.community_level,
+                                    response_type=args.response_type,
+                                    condition_id=condition_id,
+                                    max_tokens=max_tokens,
+                                )
+                            )
+
+                            selected_community_ids = []
+                            assembled_context_tokens: int | str = NULL
+                            assembled_context: str = NULL
+                            if payload is not None:
+                                selected_community_ids = payload.get("selected_community_ids") or []
+                                assembled_context_tokens = payload.get("assembled_context_tokens", NULL)
+                                assembled_context = payload.get("assembled_context") or ""
+                                if not args.raw_assembled_context:
+                                    assembled_context = _to_readable_assembled_context(
+                                        str(assembled_context),
+                                        slim=True,
+                                    )
+                            if args.debug:
+                                print(
+                                    "  [DBG] done "
+                                    f"tokens={assembled_context_tokens} "
+                                    f"selected_community_ids={selected_community_ids}"
+                                )
+                                if args.show_assembled_context:
+                                    print("  [DBG] assembled_context:")
+                                    print(
+                                        assembled_context
+                                        if str(assembled_context).strip()
+                                        else "  [empty]"
+                                    )
+
+                            row = {
+                                "test_case": test_case,
+                                "test_id": test_id,
+                                "question_type": question_type,
+                                "question_index": question_index,
+                                "question": question,
+                                "community_policy": policy,
+                                "selected_community_ids": selected_community_ids,
+                                "assembled_context_tokens": assembled_context_tokens,
+                                "assembled_context": assembled_context,
+                            }
+                            results_by_condition[key].append(row)
 
     if args.dry_run:
         print("[DONE] dry-run only")
         return 0
 
-    for condition, rows in results_by_condition.items():
+    for (condition, max_tokens), rows in results_by_condition.items():
         out_dir = run_root / condition
-        _write_condition_outputs(rows=rows, out_dir=out_dir, max_tokens=args.max_tokens)
-        suffix = f"_max{args.max_tokens}" if args.max_tokens is not None else ""
+        _write_condition_outputs(rows=rows, out_dir=out_dir, max_tokens=max_tokens)
+        suffix = f"_max{max_tokens}" if max_tokens is not None else ""
         file_names = ", ".join(
             [f"results{suffix}.csv", f"results{suffix}.jsonl", f"results{suffix}.json"]
         )
