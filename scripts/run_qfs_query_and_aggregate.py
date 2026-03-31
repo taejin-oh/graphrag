@@ -1,0 +1,323 @@
+#!/usr/bin/env python3
+"""Batch query runner + assembled_context aggregator for QFS inputs.
+
+Usage examples:
+  # 기본 실행: input_chat 전체를 순회해 policy x covariate 조건별 결과 생성
+  python scripts/run_qfs_query_and_aggregate.py
+
+  # 특정 test_case만 실행
+  python scripts/run_qfs_query_and_aggregate.py --test-case case_a
+
+  # dry-run
+  python scripts/run_qfs_query_and_aggregate.py --dry-run
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import csv
+import json
+import sys
+from collections import defaultdict
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+PACKAGE_ROOT = REPO_ROOT / "packages" / "graphrag"
+if str(PACKAGE_ROOT) not in sys.path:
+    sys.path.insert(0, str(PACKAGE_ROOT))
+
+import graphrag.api as api
+from graphrag.cli.query import _resolve_output_files
+from graphrag.config.load_config import load_config
+
+DEFAULT_POLICIES = ["flat_ranked", "leaf_only", "leaf_then_parent_mix", "pyramid"]
+NULL = "NULL"
+RESULT_COLUMNS = [
+    "test_case",
+    "test_id",
+    "question_type",
+    "question_index",
+    "question",
+    "community_policy",
+    "selected_community_ids",
+    "assembled_context_tokens",
+    "assembled_context",
+]
+
+
+def _iter_test_targets(input_chat_root: Path, test_case_filter: str | None) -> list[tuple[str, str, Path]]:
+    if not input_chat_root.exists():
+        raise FileNotFoundError(f"input_chat root not found: {input_chat_root}")
+
+    targets: list[tuple[str, str, Path]] = []
+    for test_case_dir in sorted(p for p in input_chat_root.iterdir() if p.is_dir()):
+        test_case = test_case_dir.name
+        if test_case_filter and test_case != test_case_filter:
+            continue
+
+        for test_id_dir in sorted(p for p in test_case_dir.iterdir() if p.is_dir()):
+            test_id = test_id_dir.name
+            output_dir = test_id_dir / "output"
+            probing_path = test_id_dir / "probing_questions" / "probing_questions.json"
+            if not output_dir.exists():
+                raise FileNotFoundError(
+                    f"index output directory not found for {test_case}/{test_id}: {output_dir}"
+                )
+            if not probing_path.exists():
+                raise FileNotFoundError(
+                    f"probing_questions.json not found for {test_case}/{test_id}: {probing_path}"
+                )
+            targets.append((test_case, test_id, test_id_dir))
+
+    if not targets:
+        raise ValueError("No test targets found under input_chat.")
+    return targets
+
+
+def _load_questions(path: Path) -> dict[str, list[dict[str, Any]]]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"Invalid probing_questions format (dict expected): {path}")
+    return data
+
+
+def _condition_key(policy: str, covariate_enabled: bool) -> str:
+    return f"policy={policy}__covariate={'on' if covariate_enabled else 'off'}"
+
+
+def _extract_payload(context_data: dict[str, Any]) -> dict[str, Any] | None:
+    experimental_context = context_data.get("experimental_context")
+    if experimental_context is None or not hasattr(experimental_context, "empty"):
+        return None
+    if experimental_context.empty:
+        return None
+    return experimental_context.iloc[0].to_dict()
+
+
+async def _run_single_query(
+    *,
+    repo_root: Path,
+    output_dir: Path,
+    question: str,
+    community_policy: str,
+    covariate_enabled: bool,
+    community_level: int,
+    response_type: str,
+    condition_id: str,
+    max_tokens: int | None,
+) -> dict[str, Any] | None:
+    cli_overrides = {"output_storage": {"base_dir": str(output_dir)}}
+    config = load_config(root_dir=repo_root, cli_overrides=cli_overrides)
+
+    config.local_search.experimental_context_mode = True
+    config.local_search.experimental_history_enabled = False
+    config.local_search.experimental_community_policy = community_policy
+    config.local_search.experimental_covariate_enabled = covariate_enabled
+    config.local_search.experimental_condition_id = condition_id
+    config.local_search.experimental_log_context_payload = True
+    if max_tokens is not None:
+        config.local_search.experimental_context_max_tokens = max_tokens
+
+    dfs = _resolve_output_files(
+        config=config,
+        output_list=["communities", "community_reports", "text_units", "relationships", "entities"],
+        optional_list=["covariates"],
+    )
+
+    _, context_data = await api.local_search(
+        config=config,
+        entities=dfs["entities"],
+        communities=dfs["communities"],
+        community_reports=dfs["community_reports"],
+        text_units=dfs["text_units"],
+        relationships=dfs["relationships"],
+        covariates=dfs.get("covariates"),
+        community_level=community_level,
+        response_type=response_type,
+        query=question,
+        verbose=False,
+    )
+
+    return _extract_payload(context_data)
+
+
+def _null_row(
+    *,
+    test_case: str,
+    test_id: str,
+    question_type: str,
+    question_index: int,
+    community_policy: str,
+) -> dict[str, Any]:
+    return {
+        "test_case": test_case,
+        "test_id": test_id,
+        "question_type": question_type,
+        "question_index": question_index,
+        "question": NULL,
+        "community_policy": community_policy,
+        "selected_community_ids": NULL,
+        "assembled_context_tokens": NULL,
+        "assembled_context": NULL,
+    }
+
+
+def _csv_row(row: dict[str, Any]) -> dict[str, Any]:
+    out = dict(row)
+    value = out.get("selected_community_ids")
+    if isinstance(value, list):
+        out["selected_community_ids"] = json.dumps(value, ensure_ascii=False)
+    return out
+
+
+def _write_condition_outputs(rows: list[dict[str, Any]], out_dir: Path) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    csv_path = out_dir / "results.csv"
+    with csv_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=RESULT_COLUMNS, lineterminator="\n")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(_csv_row(row))
+
+    jsonl_path = out_dir / "results.jsonl"
+    with jsonl_path.open("w", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="input_chat output을 순회하며 experimental local context query를 실행하고 condition별 결과를 집계합니다."
+    )
+    parser.add_argument("--input-chat-root", type=Path, default=Path("input_chat"), help="input_chat 루트")
+    parser.add_argument("--test-case", default=None, help="특정 test_case만 실행")
+    parser.add_argument(
+        "--policies",
+        default=",".join(DEFAULT_POLICIES),
+        help="community policy 목록(쉼표 구분)",
+    )
+    parser.add_argument("--run-id", default=None, help="실행 ID (기본: UTC timestamp)")
+    parser.add_argument("--community-level", type=int, default=2, help="local search community level")
+    parser.add_argument("--response-type", default="Multiple Paragraphs", help="local search response_type")
+    parser.add_argument("--max-tokens", type=int, default=None, help="experimental_context_max_tokens")
+    parser.add_argument("--dry-run", action="store_true", help="실제 query 실행 없이 대상/조건만 출력")
+    return parser
+
+
+def main() -> int:
+    parser = build_parser()
+    args = parser.parse_args()
+
+    input_chat_root = (REPO_ROOT / args.input_chat_root).resolve()
+    targets = _iter_test_targets(input_chat_root=input_chat_root, test_case_filter=args.test_case)
+    policies = [x.strip() for x in args.policies.split(",") if x.strip()]
+    run_id = args.run_id or datetime.now(UTC).strftime("qfs_%Y%m%dT%H%M%SZ")
+
+    run_root = (REPO_ROOT / "qfs_log" / run_id).resolve()
+    run_root.mkdir(parents=True, exist_ok=True)
+
+    print(f"[INFO] repo_root={REPO_ROOT}")
+    print(f"[INFO] targets={len(targets)}")
+    print(f"[INFO] run_root={run_root}")
+
+    results_by_condition: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
+    for test_case, test_id, test_id_dir in targets:
+        probing_path = test_id_dir / "probing_questions" / "probing_questions.json"
+        questions_by_type = _load_questions(probing_path)
+        output_dir = test_id_dir / "output"
+
+        for policy in policies:
+            for covariate_enabled in (False, True):
+                condition = _condition_key(policy=policy, covariate_enabled=covariate_enabled)
+
+                for question_type, question_items in questions_by_type.items():
+                    if not isinstance(question_items, list):
+                        raise ValueError(
+                            f"Invalid question list at {probing_path}: key={question_type}"
+                        )
+
+                    for question_index, item in enumerate(question_items, start=1):
+                        if question_type == "abstention":
+                            row = _null_row(
+                                test_case=test_case,
+                                test_id=test_id,
+                                question_type=question_type,
+                                question_index=question_index,
+                                community_policy=policy,
+                            )
+                            results_by_condition[condition].append(row)
+                            continue
+
+                        question = item.get("question") if isinstance(item, dict) else None
+                        if not question:
+                            raise ValueError(
+                                f"Missing 'question' in {probing_path} ({question_type}[{question_index}])"
+                            )
+
+                        condition_id = (
+                            f"{run_id}|{test_case}|{test_id}|{policy}|c{int(covariate_enabled)}"
+                            f"|{question_type}|q{question_index:03d}"
+                        )
+
+                        if args.dry_run:
+                            print(
+                                f"[DRY-RUN] {test_case}/{test_id} {condition} "
+                                f"{question_type}[{question_index}] {question[:80]}"
+                            )
+                            continue
+
+                        payload = asyncio.run(
+                            _run_single_query(
+                                repo_root=REPO_ROOT,
+                                output_dir=output_dir,
+                                question=question,
+                                community_policy=policy,
+                                covariate_enabled=covariate_enabled,
+                                community_level=args.community_level,
+                                response_type=args.response_type,
+                                condition_id=condition_id,
+                                max_tokens=args.max_tokens,
+                            )
+                        )
+
+                        selected_community_ids = []
+                        assembled_context_tokens: int | str = NULL
+                        assembled_context: str = NULL
+                        if payload is not None:
+                            selected_community_ids = payload.get("selected_community_ids") or []
+                            assembled_context_tokens = payload.get("assembled_context_tokens", NULL)
+                            assembled_context = payload.get("assembled_context") or ""
+
+                        row = {
+                            "test_case": test_case,
+                            "test_id": test_id,
+                            "question_type": question_type,
+                            "question_index": question_index,
+                            "question": question,
+                            "community_policy": policy,
+                            "selected_community_ids": selected_community_ids,
+                            "assembled_context_tokens": assembled_context_tokens,
+                            "assembled_context": assembled_context,
+                        }
+                        results_by_condition[condition].append(row)
+
+    if args.dry_run:
+        print("[DONE] dry-run only")
+        return 0
+
+    for condition, rows in results_by_condition.items():
+        out_dir = run_root / condition
+        _write_condition_outputs(rows=rows, out_dir=out_dir)
+        print(f"[DONE] {condition} -> {out_dir}")
+
+    print("\nAll query runs completed.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
