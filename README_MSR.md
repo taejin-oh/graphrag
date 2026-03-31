@@ -153,8 +153,8 @@ python scripts/run_qfs_index.py --test-case 100K --force-clean
 
 `scripts/run_qfs_query_and_aggregate.py`는 `test_case` 고정 외에 `test_id`도 임의 지정할 수 있습니다.
 
-- `--test-case`: 특정 케이스만 선택
-- `--test-ids`: 해당 케이스 내에서 실행할 test_id 목록 선택
+- `--test-case`: 실행할 test_case 목록 선택(여러 개 가능, 입력 순서 유지)
+- `--test-ids`: 각 test_case 내 실행할 test_id 목록 선택(여러 개 가능, 입력 순서 유지)
 - `--debug`: 질문 단위 진행 로그 출력
 - `--show-assembled-context`: `--debug`와 함께 질문별 assembled_context 본문 출력
 - 기본값으로 assembled_context는 summary 중심 slim 포맷으로 정리됨
@@ -185,6 +185,12 @@ python scripts/run_qfs_query_and_aggregate.py \
   --test-case case_a \
   --test-ids 001 003 \
   --run-id qfs_case_a_sel
+
+# case_a -> case_b 순으로 실행, 각 케이스에서 003 -> 001 순으로 실행
+python scripts/run_qfs_query_and_aggregate.py \
+  --test-case case_a case_b \
+  --test-ids 003 001 \
+  --run-id qfs_case_ab_ordered
 
 # 디버그 로그 + assembled_context 본문 출력
 python scripts/run_qfs_query_and_aggregate.py \
@@ -224,6 +230,7 @@ python scripts/run_qfs_query_and_aggregate.py \
 - `--max-rounds`로 재시도 상한 설정 가능 (`0`이면 무제한)
 - `--max-tokens` 지정 시 하위 `run_qfs_query_and_aggregate.py` 호출로 그대로 전달
   - 예: `--max-tokens 500 1000 2000`이면 token 값마다 전체 policy set 실행
+- `--test-case`, `--test-ids`를 여러 개 지정하면 입력 순서대로 처리
 - 진행 로그는 `qfs_log/<run_id>/progress_log.txt`에 기록되고 콘솔에는 노란색으로 출력
 
 예시:
@@ -234,6 +241,13 @@ python scripts/run_qfs_total_pipeline.py \
   --test-ids 001 003 \
   --max-tokens 1200 \
   --run-id qfs_total_case_a_t1200
+
+# test_case / test_id 모두 입력 순서대로 처리
+python scripts/run_qfs_total_pipeline.py \
+  --test-case case_b case_a \
+  --test-ids 003 001 \
+  --max-tokens 500 1000 2000 \
+  --run-id qfs_total_ordered_multi
 ```
 
 ---

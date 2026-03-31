@@ -59,7 +59,7 @@ _DATA_CITATION_RE = re.compile(r"\[Data:[^\]]+\]")
 _HUMAN_KEEP_FIELDS = {"summary", "content", "current_state", "date_range", "entity", "timeline_events"}
 
 
-def _iter_test_targets(input_chat_root: Path, test_case_filter: str | None) -> list[tuple[str, str, Path]]:
+def _iter_test_targets(input_chat_root: Path, test_case_filter: list[str] | None) -> list[tuple[str, str, Path]]:
     return _iter_test_targets_with_filter(
         input_chat_root=input_chat_root,
         test_case_filter=test_case_filter,
@@ -70,23 +70,40 @@ def _iter_test_targets(input_chat_root: Path, test_case_filter: str | None) -> l
 def _iter_test_targets_with_filter(
     *,
     input_chat_root: Path,
-    test_case_filter: str | None,
+    test_case_filter: list[str] | None,
     test_id_filters: list[str] | None,
 ) -> list[tuple[str, str, Path]]:
     if not input_chat_root.exists():
         raise FileNotFoundError(f"input_chat root not found: {input_chat_root}")
 
     targets: list[tuple[str, str, Path]] = []
-    seen_test_ids: set[str] = set()
-    for test_case_dir in sorted(p for p in input_chat_root.iterdir() if p.is_dir()):
-        test_case = test_case_dir.name
-        if test_case_filter and test_case != test_case_filter:
-            continue
 
-        for test_id_dir in sorted(p for p in test_case_dir.iterdir() if p.is_dir()):
-            test_id = test_id_dir.name
-            if test_id_filters and test_id not in test_id_filters:
-                continue
+    case_dirs = {p.name: p for p in input_chat_root.iterdir() if p.is_dir()}
+    if test_case_filter:
+        missing_cases = [test_case for test_case in test_case_filter if test_case not in case_dirs]
+        if missing_cases:
+            raise FileNotFoundError(
+                f"Requested test_case not found under input_chat root: {missing_cases}"
+            )
+        selected_cases = test_case_filter
+    else:
+        selected_cases = sorted(case_dirs.keys())
+
+    for test_case in selected_cases:
+        test_case_dir = case_dirs[test_case]
+        id_dirs = {p.name: p for p in test_case_dir.iterdir() if p.is_dir()}
+        if test_id_filters:
+            missing_ids = [test_id for test_id in test_id_filters if test_id not in id_dirs]
+            if missing_ids:
+                raise FileNotFoundError(
+                    f"Requested test_id not found under selected test_case '{test_case}': {missing_ids}"
+                )
+            selected_ids = test_id_filters
+        else:
+            selected_ids = sorted(id_dirs.keys())
+
+        for test_id in selected_ids:
+            test_id_dir = id_dirs[test_id]
             output_dir = test_id_dir / "output"
             probing_path = test_id_dir / "probing_questions" / "probing_questions.json"
             if not output_dir.exists():
@@ -98,16 +115,9 @@ def _iter_test_targets_with_filter(
                     f"probing_questions.json not found for {test_case}/{test_id}: {probing_path}"
                 )
             targets.append((test_case, test_id, test_id_dir))
-            seen_test_ids.add(test_id)
 
     if not targets:
         raise ValueError("No test targets found under input_chat.")
-    if test_id_filters:
-        missing = [test_id for test_id in test_id_filters if test_id not in seen_test_ids]
-        if missing:
-            raise FileNotFoundError(
-                f"Requested test_id not found under selected scope: {missing}"
-            )
     return targets
 
 
@@ -323,12 +333,12 @@ def build_parser() -> argparse.ArgumentParser:
         description="input_chat output을 순회하며 experimental local context query를 실행하고 condition별 결과를 집계합니다."
     )
     parser.add_argument("--input-chat-root", type=Path, default=Path("input_chat"), help="input_chat 루트")
-    parser.add_argument("--test-case", default=None, help="특정 test_case만 실행")
+    parser.add_argument("--test-case", nargs="+", default=None, help="실행할 test_case 목록(입력 순서 유지)")
     parser.add_argument(
         "--test-ids",
         nargs="+",
         default=None,
-        help="실행할 test_id 목록(미지정 시 test_case 내 전체)",
+        help="실행할 test_id 목록(입력 순서 유지, 미지정 시 test_case 내 전체)",
     )
     parser.add_argument(
         "--policies",

@@ -37,24 +37,39 @@ def _log_progress(progress_path: Path, message: str) -> None:
 def _iter_targets(
     *,
     input_chat_root: Path,
-    test_case_filter: str | None,
+    test_case_filter: list[str] | None,
     test_ids_filter: list[str] | None,
 ) -> list[tuple[str, str, Path]]:
     if not input_chat_root.exists():
         raise FileNotFoundError(f"input_chat root not found: {input_chat_root}")
 
     targets: list[tuple[str, str, Path]] = []
-    seen_test_ids: set[str] = set()
-    for test_case_dir in sorted(p for p in input_chat_root.iterdir() if p.is_dir()):
-        test_case = test_case_dir.name
-        if test_case_filter and test_case != test_case_filter:
-            continue
+    case_dirs = {p.name: p for p in input_chat_root.iterdir() if p.is_dir()}
+    if test_case_filter:
+        missing_cases = [test_case for test_case in test_case_filter if test_case not in case_dirs]
+        if missing_cases:
+            raise FileNotFoundError(
+                f"Requested test_case not found under input_chat root: {missing_cases}"
+            )
+        selected_cases = test_case_filter
+    else:
+        selected_cases = sorted(case_dirs.keys())
 
-        for test_id_dir in sorted(p for p in test_case_dir.iterdir() if p.is_dir()):
-            test_id = test_id_dir.name
-            if test_ids_filter and test_id not in test_ids_filter:
-                continue
+    for test_case in selected_cases:
+        test_case_dir = case_dirs[test_case]
+        id_dirs = {p.name: p for p in test_case_dir.iterdir() if p.is_dir()}
+        if test_ids_filter:
+            missing_ids = [test_id for test_id in test_ids_filter if test_id not in id_dirs]
+            if missing_ids:
+                raise FileNotFoundError(
+                    f"Requested test_id not found under selected test_case '{test_case}': {missing_ids}"
+                )
+            selected_ids = test_ids_filter
+        else:
+            selected_ids = sorted(id_dirs.keys())
 
+        for test_id in selected_ids:
+            test_id_dir = id_dirs[test_id]
             input_json = test_id_dir / f"{test_case}_{test_id}.json"
             probing_path = test_id_dir / "probing_questions" / "probing_questions.json"
             if not input_json.exists():
@@ -67,15 +82,9 @@ def _iter_targets(
                 )
 
             targets.append((test_case, test_id, test_id_dir))
-            seen_test_ids.add(test_id)
 
     if not targets:
         raise ValueError("No test targets found under input_chat.")
-
-    if test_ids_filter:
-        missing = [test_id for test_id in test_ids_filter if test_id not in seen_test_ids]
-        if missing:
-            raise FileNotFoundError(f"Requested test_id not found under selected scope: {missing}")
 
     return targets
 
@@ -134,8 +143,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="test_case/test_id 단위로 index->query(policies) 전체 파이프라인을 재시도 루프까지 포함해 실행합니다."
     )
     parser.add_argument("--input-chat-root", type=Path, default=Path("input_chat"), help="input_chat 루트")
-    parser.add_argument("--test-case", default=None, help="특정 test_case만 실행")
-    parser.add_argument("--test-ids", nargs="+", default=None, help="실행할 test_id 목록")
+    parser.add_argument("--test-case", nargs="+", default=None, help="실행할 test_case 목록(입력 순서 유지)")
+    parser.add_argument("--test-ids", nargs="+", default=None, help="실행할 test_id 목록(입력 순서 유지)")
     parser.add_argument(
         "--policies",
         default=",".join(DEFAULT_POLICIES),
