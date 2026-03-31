@@ -392,3 +392,54 @@ def test_debug_runner_timeout_exit_code(tmp_path: Path, monkeypatch: pytest.Monk
 
     rc = debug_qfs_query_runner.main()
     assert rc == 124
+
+
+def test_debug_runner_can_print_assembled_context(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    target_dir = tmp_path / "input_chat" / "100K" / "7"
+    target_dir.mkdir(parents=True)
+
+    monkeypatch.setattr(debug_qfs_query_runner.base, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        debug_qfs_query_runner.base,
+        "_iter_test_targets_with_filter",
+        lambda **_: [("100K", "7", target_dir)],
+    )
+    monkeypatch.setattr(
+        debug_qfs_query_runner.base,
+        "_load_questions",
+        lambda _p: {"fact": [{"question": "Q1"}]},
+    )
+
+    async def fake_run_single_query(**kwargs):
+        return {
+            "assembled_context_tokens": 3,
+            "selected_community_ids": ["1"],
+            "assembled_context": "assembled-context-body",
+        }
+
+    monkeypatch.setattr(
+        debug_qfs_query_runner.base,
+        "_run_single_query",
+        fake_run_single_query,
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "debug_qfs_query_runner.py",
+            "--test-case",
+            "100K",
+            "--test-ids",
+            "7",
+            "--show-assembled-context",
+        ],
+    )
+
+    rc = debug_qfs_query_runner.main()
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "assembled_context" in out
+    assert "assembled-context-body" in out

@@ -190,3 +190,13 @@ python scripts/debug_qfs_query_runner.py \
   --per-query-timeout 120 \
   --continue-on-timeout
 ```
+
+질문별 `assembled_context` 본문까지 출력하려면:
+
+```bash
+python scripts/debug_qfs_query_runner.py \
+  --test-case 100K \
+  --test-ids 7 \
+  --max-tokens 1000 \
+  --show-assembled-context
+```

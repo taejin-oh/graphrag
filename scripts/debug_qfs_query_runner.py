@@ -47,6 +47,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="timeout 발생 시 다음 질문으로 계속 진행",
     )
+    parser.add_argument(
+        "--show-assembled-context",
+        action="store_true",
+        help="각 질문 완료 시 assembled_context 본문까지 출력",
+    )
     return parser
 
 
@@ -133,6 +138,10 @@ def main() -> int:
                                     f"{dt:.2f}s tokens={payload.get('assembled_context_tokens')} "
                                     f"selected_community_ids={payload.get('selected_community_ids')}"
                                 )
+                                if args.show_assembled_context:
+                                    assembled_context = str(payload.get("assembled_context") or "")
+                                    print("  [DBG] assembled_context:")
+                                    print(assembled_context if assembled_context.strip() else "  [empty]")
                         except TimeoutError:
                             dt = time.perf_counter() - t0
                             print(
