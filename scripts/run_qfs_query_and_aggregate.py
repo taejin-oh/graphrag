@@ -295,26 +295,32 @@ def _csv_row(row: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _write_condition_outputs(rows: list[dict[str, Any]], out_dir: Path) -> None:
+def _write_condition_outputs(rows: list[dict[str, Any]], out_dir: Path, max_tokens: int | None) -> list[Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
+    suffix = f"_max{max_tokens}" if max_tokens is not None else ""
+    written_paths: list[Path] = []
 
-    csv_path = out_dir / "results.csv"
+    csv_path = out_dir / f"results{suffix}.csv"
     with csv_path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=RESULT_COLUMNS, lineterminator="\n")
         writer.writeheader()
         for row in rows:
             writer.writerow(_csv_row(row))
+    written_paths.append(csv_path)
 
-    jsonl_path = out_dir / "results.jsonl"
+    jsonl_path = out_dir / f"results{suffix}.jsonl"
     with jsonl_path.open("w", encoding="utf-8") as f:
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    written_paths.append(jsonl_path)
 
-    json_path = out_dir / "results.json"
+    json_path = out_dir / f"results{suffix}.json"
     json_path.write_text(
         json.dumps(rows, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    written_paths.append(json_path)
+    return written_paths
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -494,8 +500,9 @@ def main() -> int:
 
     for condition, rows in results_by_condition.items():
         out_dir = run_root / condition
-        _write_condition_outputs(rows=rows, out_dir=out_dir)
-        print(f"[DONE] {condition} -> {out_dir}")
+        written = _write_condition_outputs(rows=rows, out_dir=out_dir, max_tokens=args.max_tokens)
+        file_names = ", ".join(path.name for path in written)
+        print(f"[DONE] {condition} -> {out_dir} ({file_names})")
 
     print("\nAll query runs completed.")
     return 0

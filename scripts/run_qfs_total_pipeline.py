@@ -108,8 +108,9 @@ def _build_query_cmd(
     input_chat_root: Path,
     policy: str,
     run_id: str,
+    max_tokens: int | None,
 ) -> list[str]:
-    return [
+    cmd = [
         sys.executable,
         str(REPO_ROOT / "scripts" / "run_qfs_query_and_aggregate.py"),
         "--input-chat-root",
@@ -123,6 +124,9 @@ def _build_query_cmd(
         "--run-id",
         run_id,
     ]
+    if max_tokens is not None:
+        cmd.extend(["--max-tokens", str(max_tokens)])
+    return cmd
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -138,6 +142,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="query policy 순서(쉼표 구분). 기본: pyramid,flat_ranked,leaf_only,leaf_then_parent_mix",
     )
     parser.add_argument("--run-id", default=None, help="run id prefix (기본: UTC timestamp)")
+    parser.add_argument("--max-tokens", type=int, default=None, help="query 단계 experimental_context_max_tokens")
     parser.add_argument(
         "--sleep-seconds",
         type=int,
@@ -222,6 +227,7 @@ def main() -> int:
                     input_chat_root=args.input_chat_root,
                     policy=policy,
                     run_id=query_run_id,
+                    max_tokens=args.max_tokens,
                 )
                 code, tail = _run_cmd(query_cmd)
                 if code != 0:
