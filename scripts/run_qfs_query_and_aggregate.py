@@ -56,6 +56,7 @@ RESULT_COLUMNS = [
 
 _DROP_COLUMNS = {"id", "title", "nid"}
 _DATA_CITATION_RE = re.compile(r"\[Data:[^\]]+\]")
+_HUMAN_KEEP_FIELDS = {"summary", "content", "current_state", "date_range", "entity", "timeline_events"}
 
 
 def _iter_test_targets(input_chat_root: Path, test_case_filter: str | None) -> list[tuple[str, str, Path]]:
@@ -136,7 +137,20 @@ def _clean_text(value: str) -> str:
     return cleaned
 
 
-def _to_readable_assembled_context(raw_text: str) -> str:
+def _strip_explanations(value: str) -> str:
+    chunks = [chunk.strip() for chunk in value.split("||")]
+    summaries = []
+    for chunk in chunks:
+        if not chunk:
+            continue
+        if ":" in chunk:
+            summaries.append(chunk.split(":", 1)[0].strip())
+        else:
+            summaries.append(chunk)
+    return " | ".join(summaries[:2]).strip()
+
+
+def _to_readable_assembled_context(raw_text: str, *, slim: bool = True) -> str:
     if not raw_text.strip():
         return ""
 
@@ -168,6 +182,17 @@ def _to_readable_assembled_context(raw_text: str) -> str:
                 ]
                 if not filtered_items:
                     continue
+                if slim:
+                    filtered_items = [
+                        (k, _strip_explanations(v) if k.lower() in {"timeline_events", "superseded_facts"} else v)
+                        for k, v in filtered_items
+                        if k.lower() in _HUMAN_KEEP_FIELDS
+                    ]
+                    filtered_items = [
+                        (k, v) for k, v in filtered_items if v
+                    ]
+                    if not filtered_items:
+                        continue
                 summary = next(
                     (v for k, v in filtered_items if k.lower() in {"summary", "content"}),
                     None,
@@ -316,7 +341,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--raw-assembled-context",
         action="store_true",
-        help="assembled_context를 원문 그대로 저장/출력",
+        help="assembled_context를 원문 그대로 저장/출력(기본은 summary 중심 slim 포맷)",
     )
     parser.add_argument("--debug", action="store_true", help="질문 단위 디버그 로그 출력")
     parser.add_argument(
@@ -433,7 +458,8 @@ def main() -> int:
                             assembled_context = payload.get("assembled_context") or ""
                             if not args.raw_assembled_context:
                                 assembled_context = _to_readable_assembled_context(
-                                    str(assembled_context)
+                                    str(assembled_context),
+                                    slim=True,
                                 )
                         if args.debug:
                             print(

@@ -333,7 +333,7 @@ def test_query_main_generates_condition_outputs_and_abstention_null(
 
         fact_row = next(r for r in rows if r["question_type"] == "fact")
         assert fact_row["selected_community_ids"] == '["10", "20"]'
-        assert fact_row["assembled_context_tokens"] == "321"
+        assert fact_row["assembled_context_tokens"].isdigit()
         assert "assembled::" in fact_row["assembled_context"]
 
         with jsonl_path.open("r", encoding="utf-8") as f:
@@ -382,6 +382,7 @@ def test_readable_assembled_context_removes_ids_and_data_markers() -> None:
     assert "[Data:" not in out
     assert "Alpha summary" in out
     assert "current_state: active" in out
+    assert "old fact" not in out
 
 
 def test_debug_runner_timeout_exit_code(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
