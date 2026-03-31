@@ -138,7 +138,11 @@ def _extract_payload(context_data: dict[str, Any]) -> dict[str, Any] | None:
         return None
     if experimental_context.empty:
         return None
-    return experimental_context.iloc[0].to_dict()
+    # NOTE:
+    # `experimental_context` can contain multiple rows when callbacks emit
+    # intermediate contexts in a single query lifecycle. We want the final
+    # assembled payload for the current query, so pick the last row.
+    return experimental_context.iloc[-1].to_dict()
 
 
 def _clean_text(value: str) -> str:
