@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts import run_qfs_index, run_qfs_query_and_aggregate
+from scripts import debug_qfs_query_runner, run_qfs_index, run_qfs_query_and_aggregate
 
 
 def test_iter_test_targets_finds_expected_layout(tmp_path: Path) -> None:
@@ -350,3 +350,45 @@ def test_query_iter_targets_with_test_id_filter(tmp_path: Path) -> None:
         test_id_filters=["002"],
     )
     assert [(case, test_id) for case, test_id, _ in targets] == [("case_a", "002")]
+
+
+def test_debug_runner_timeout_exit_code(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    target_dir = tmp_path / "input_chat" / "100K" / "7"
+    target_dir.mkdir(parents=True)
+
+    monkeypatch.setattr(debug_qfs_query_runner.base, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        debug_qfs_query_runner.base,
+        "_iter_test_targets_with_filter",
+        lambda **_: [("100K", "7", target_dir)],
+    )
+    monkeypatch.setattr(
+        debug_qfs_query_runner.base,
+        "_load_questions",
+        lambda _p: {"fact": [{"question": "Q1"}]},
+    )
+
+    async def fake_run_single_query(**kwargs):
+        await asyncio.sleep(0.05)
+        return {"assembled_context_tokens": 1, "selected_community_ids": ["1"]}
+
+    monkeypatch.setattr(
+        debug_qfs_query_runner.base,
+        "_run_single_query",
+        fake_run_single_query,
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "debug_qfs_query_runner.py",
+            "--test-case",
+            "100K",
+            "--test-ids",
+            "7",
+            "--per-query-timeout",
+            "0.01",
+        ],
+    )
+
+    rc = debug_qfs_query_runner.main()
+    assert rc == 124

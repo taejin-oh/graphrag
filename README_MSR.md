@@ -165,3 +165,28 @@ python scripts/run_qfs_query_and_aggregate.py \
   --test-ids 001 003 \
   --run-id qfs_case_a_sel
 ```
+
+---
+
+## 8) query/aggregate 멈춤 지점 디버그
+
+`scripts/debug_qfs_query_runner.py`를 사용하면 질문 단위 timeout과 단계별 로그로 어디서 멈추는지 확인할 수 있습니다.
+
+```bash
+python scripts/debug_qfs_query_runner.py \
+  --test-case 100K \
+  --test-ids 7 \
+  --max-tokens 1000 \
+  --per-query-timeout 120
+```
+
+timeout이 발생해도 계속 진행하려면:
+
+```bash
+python scripts/debug_qfs_query_runner.py \
+  --test-case 100K \
+  --test-ids 7 \
+  --max-tokens 1000 \
+  --per-query-timeout 120 \
+  --continue-on-timeout
+```
