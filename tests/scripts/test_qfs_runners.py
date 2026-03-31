@@ -63,7 +63,7 @@ def test_run_single_index_recreates_logs_and_output(tmp_path: Path, monkeypatch:
             verbose=False,
             skip_validation=False,
             input_type="json",
-            input_file_pattern=r".*\\.json$",
+            input_file_pattern=r".*\.json$",
         )
     )
 
@@ -74,7 +74,7 @@ def test_run_single_index_recreates_logs_and_output(tmp_path: Path, monkeypatch:
 
     overrides = captured["cli_overrides"]
     assert overrides["input"]["type"] == "json"
-    assert overrides["input"]["file_pattern"] == r".*\\.json$"
+    assert overrides["input"]["file_pattern"] == r".*\.json$"
     assert overrides["input_storage"]["base_dir"] == str(test_id_dir)
     assert overrides["output_storage"]["base_dir"] == str(output_dir)
     assert overrides["reporting"]["base_dir"] == str(logs_dir)

@@ -128,8 +128,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--input-file-pattern",
-        default=r".*\\.json$",
-        help=r"index 입력 파일 regex(기본: .*\\.json$)",
+        default=r".*\.json$",
+        help=r"index 입력 파일 regex(기본: .*\.json$)",
     )
     parser.add_argument("--test-case", default=None, help="특정 test_case만 실행")
     parser.add_argument(
