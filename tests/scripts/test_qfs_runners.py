@@ -247,16 +247,24 @@ def test_query_main_generates_condition_outputs_and_abstention_null(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo_root = tmp_path
-    input_chat = repo_root / "input_chat" / "case_a" / "001"
-    probing_dir = input_chat / "probing_questions"
-    probing_dir.mkdir(parents=True)
-    (input_chat / "output").mkdir(parents=True)
+    input_chat_001 = repo_root / "input_chat" / "case_a" / "001"
+    probing_dir_001 = input_chat_001 / "probing_questions"
+    probing_dir_001.mkdir(parents=True)
+    (input_chat_001 / "output").mkdir(parents=True)
+
+    input_chat_002 = repo_root / "input_chat" / "case_a" / "002"
+    probing_dir_002 = input_chat_002 / "probing_questions"
+    probing_dir_002.mkdir(parents=True)
+    (input_chat_002 / "output").mkdir(parents=True)
 
     probing = {
         "abstention": [{"question": "skip me"}],
         "fact": [{"question": "Who is Scrooge?"}],
     }
-    (probing_dir / "probing_questions.json").write_text(
+    (probing_dir_001 / "probing_questions.json").write_text(
+        json.dumps(probing, ensure_ascii=False), encoding="utf-8"
+    )
+    (probing_dir_002 / "probing_questions.json").write_text(
         json.dumps(probing, ensure_ascii=False), encoding="utf-8"
     )
 
@@ -280,6 +288,10 @@ def test_query_main_generates_condition_outputs_and_abstention_null(
             run_id,
             "--policies",
             "flat_ranked,leaf_only",
+            "--test-case",
+            "case_a",
+            "--test-ids",
+            "001",
         ],
     )
 
@@ -303,6 +315,7 @@ def test_query_main_generates_condition_outputs_and_abstention_null(
         with csv_path.open("r", encoding="utf-8") as f:
             rows = list(csv.DictReader(f))
         assert len(rows) == 2
+        assert {r["test_id"] for r in rows} == {"001"}
 
         abstention_row = next(r for r in rows if r["question_type"] == "abstention")
         assert abstention_row["question"] == "NULL"
@@ -319,3 +332,21 @@ def test_query_main_generates_condition_outputs_and_abstention_null(
             jsonl_rows = [json.loads(line) for line in f if line.strip()]
         fact_jsonl = next(r for r in jsonl_rows if r["question_type"] == "fact")
         assert fact_jsonl["selected_community_ids"] == ["10", "20"]
+
+
+def test_query_iter_targets_with_test_id_filter(tmp_path: Path) -> None:
+    root = tmp_path / "input_chat"
+    for case, test_id in (("case_a", "001"), ("case_a", "002"), ("case_b", "001")):
+        base = root / case / test_id
+        (base / "output").mkdir(parents=True)
+        (base / "probing_questions").mkdir(parents=True)
+        (base / "probing_questions" / "probing_questions.json").write_text(
+            "{}", encoding="utf-8"
+        )
+
+    targets = run_qfs_query_and_aggregate._iter_test_targets_with_filter(
+        input_chat_root=root,
+        test_case_filter="case_a",
+        test_id_filters=["002"],
+    )
+    assert [(case, test_id) for case, test_id, _ in targets] == [("case_a", "002")]

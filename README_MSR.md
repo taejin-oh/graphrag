@@ -146,3 +146,22 @@ python scripts/run_qfs_index.py --test-case 100K --resume --continue-on-error
 # 강제 재실행(로그/출력 초기화)
 python scripts/run_qfs_index.py --test-case 100K --force-clean
 ```
+
+---
+
+## 7) QFS query/aggregate에서 test_id 지정 실행
+
+`scripts/run_qfs_query_and_aggregate.py`는 `test_case` 고정 외에 `test_id`도 임의 지정할 수 있습니다.
+
+- `--test-case`: 특정 케이스만 선택
+- `--test-ids`: 해당 케이스 내에서 실행할 test_id 목록 선택
+
+예시:
+
+```bash
+# case_a 안에서 001, 003 test_id만 실행
+python scripts/run_qfs_query_and_aggregate.py \
+  --test-case case_a \
+  --test-ids 001 003 \
+  --run-id qfs_case_a_sel
+```

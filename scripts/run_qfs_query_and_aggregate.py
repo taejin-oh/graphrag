@@ -8,6 +8,9 @@ Usage examples:
   # 특정 test_case만 실행
   python scripts/run_qfs_query_and_aggregate.py --test-case case_a
 
+  # 특정 test_id만 골라 실행
+  python scripts/run_qfs_query_and_aggregate.py --test-case case_a --test-ids 001 003
+
   # dry-run
   python scripts/run_qfs_query_and_aggregate.py --dry-run
 """
@@ -49,10 +52,24 @@ RESULT_COLUMNS = [
 
 
 def _iter_test_targets(input_chat_root: Path, test_case_filter: str | None) -> list[tuple[str, str, Path]]:
+    return _iter_test_targets_with_filter(
+        input_chat_root=input_chat_root,
+        test_case_filter=test_case_filter,
+        test_id_filters=None,
+    )
+
+
+def _iter_test_targets_with_filter(
+    *,
+    input_chat_root: Path,
+    test_case_filter: str | None,
+    test_id_filters: list[str] | None,
+) -> list[tuple[str, str, Path]]:
     if not input_chat_root.exists():
         raise FileNotFoundError(f"input_chat root not found: {input_chat_root}")
 
     targets: list[tuple[str, str, Path]] = []
+    seen_test_ids: set[str] = set()
     for test_case_dir in sorted(p for p in input_chat_root.iterdir() if p.is_dir()):
         test_case = test_case_dir.name
         if test_case_filter and test_case != test_case_filter:
@@ -60,6 +77,8 @@ def _iter_test_targets(input_chat_root: Path, test_case_filter: str | None) -> l
 
         for test_id_dir in sorted(p for p in test_case_dir.iterdir() if p.is_dir()):
             test_id = test_id_dir.name
+            if test_id_filters and test_id not in test_id_filters:
+                continue
             output_dir = test_id_dir / "output"
             probing_path = test_id_dir / "probing_questions" / "probing_questions.json"
             if not output_dir.exists():
@@ -71,9 +90,16 @@ def _iter_test_targets(input_chat_root: Path, test_case_filter: str | None) -> l
                     f"probing_questions.json not found for {test_case}/{test_id}: {probing_path}"
                 )
             targets.append((test_case, test_id, test_id_dir))
+            seen_test_ids.add(test_id)
 
     if not targets:
         raise ValueError("No test targets found under input_chat.")
+    if test_id_filters:
+        missing = [test_id for test_id in test_id_filters if test_id not in seen_test_ids]
+        if missing:
+            raise FileNotFoundError(
+                f"Requested test_id not found under selected scope: {missing}"
+            )
     return targets
 
 
@@ -196,6 +222,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--input-chat-root", type=Path, default=Path("input_chat"), help="input_chat 루트")
     parser.add_argument("--test-case", default=None, help="특정 test_case만 실행")
     parser.add_argument(
+        "--test-ids",
+        nargs="+",
+        default=None,
+        help="실행할 test_id 목록(미지정 시 test_case 내 전체)",
+    )
+    parser.add_argument(
         "--policies",
         default=",".join(DEFAULT_POLICIES),
         help="community policy 목록(쉼표 구분)",
@@ -213,7 +245,11 @@ def main() -> int:
     args = parser.parse_args()
 
     input_chat_root = (REPO_ROOT / args.input_chat_root).resolve()
-    targets = _iter_test_targets(input_chat_root=input_chat_root, test_case_filter=args.test_case)
+    targets = _iter_test_targets_with_filter(
+        input_chat_root=input_chat_root,
+        test_case_filter=args.test_case,
+        test_id_filters=args.test_ids,
+    )
     policies = [x.strip() for x in args.policies.split(",") if x.strip()]
     run_id = args.run_id or datetime.now(UTC).strftime("qfs_%Y%m%dT%H%M%SZ")
 
