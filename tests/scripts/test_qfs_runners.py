@@ -245,6 +245,7 @@ def test_run_single_query_sets_experimental_flags_and_extracts_payload(monkeypat
 def test_query_main_generates_condition_outputs_and_abstention_null(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     repo_root = tmp_path
     input_chat_001 = repo_root / "input_chat" / "case_a" / "001"
@@ -292,11 +293,16 @@ def test_query_main_generates_condition_outputs_and_abstention_null(
             "case_a",
             "--test-ids",
             "001",
+            "--debug",
+            "--show-assembled-context",
         ],
     )
 
     rc = run_qfs_query_and_aggregate.main()
+    out = capsys.readouterr().out
     assert rc == 0
+    assert "[DBG] target=case_a/001" in out
+    assert "[DBG] assembled_context:" in out
 
     run_root = repo_root / "qfs_log" / run_id
     conditions = {

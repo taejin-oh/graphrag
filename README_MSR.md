@@ -155,6 +155,8 @@ python scripts/run_qfs_index.py --test-case 100K --force-clean
 
 - `--test-case`: 특정 케이스만 선택
 - `--test-ids`: 해당 케이스 내에서 실행할 test_id 목록 선택
+- `--debug`: 질문 단위 진행 로그 출력
+- `--show-assembled-context`: `--debug`와 함께 질문별 assembled_context 본문 출력
 
 예시:
 
@@ -164,6 +166,13 @@ python scripts/run_qfs_query_and_aggregate.py \
   --test-case case_a \
   --test-ids 001 003 \
   --run-id qfs_case_a_sel
+
+# 디버그 로그 + assembled_context 본문 출력
+python scripts/run_qfs_query_and_aggregate.py \
+  --test-case case_a \
+  --test-ids 001 \
+  --debug \
+  --show-assembled-context
 ```
 
 ---

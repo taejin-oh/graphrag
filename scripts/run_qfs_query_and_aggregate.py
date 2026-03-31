@@ -11,6 +11,9 @@ Usage examples:
   # 특정 test_id만 골라 실행
   python scripts/run_qfs_query_and_aggregate.py --test-case case_a --test-ids 001 003
 
+  # 디버그 로그 + assembled_context 본문 출력
+  python scripts/run_qfs_query_and_aggregate.py --test-case case_a --test-ids 001 --debug --show-assembled-context
+
   # dry-run
   python scripts/run_qfs_query_and_aggregate.py --dry-run
 """
@@ -236,6 +239,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--community-level", type=int, default=2, help="local search community level")
     parser.add_argument("--response-type", default="Multiple Paragraphs", help="local search response_type")
     parser.add_argument("--max-tokens", type=int, default=None, help="experimental_context_max_tokens")
+    parser.add_argument("--debug", action="store_true", help="질문 단위 디버그 로그 출력")
+    parser.add_argument(
+        "--show-assembled-context",
+        action="store_true",
+        help="--debug와 함께 사용 시 assembled_context 본문까지 출력",
+    )
     parser.add_argument("--dry-run", action="store_true", help="실제 query 실행 없이 대상/조건만 출력")
     return parser
 
@@ -259,6 +268,11 @@ def main() -> int:
     print(f"[INFO] repo_root={REPO_ROOT}")
     print(f"[INFO] targets={len(targets)}")
     print(f"[INFO] run_root={run_root}")
+    if args.debug:
+        print(f"[DBG] policies={policies}")
+        print(f"[DBG] test_case_filter={args.test_case}")
+        print(f"[DBG] test_id_filters={args.test_ids}")
+        print(f"[DBG] max_tokens={args.max_tokens}")
 
     results_by_condition: dict[str, list[dict[str, Any]]] = defaultdict(list)
 
@@ -266,10 +280,16 @@ def main() -> int:
         probing_path = test_id_dir / "probing_questions" / "probing_questions.json"
         questions_by_type = _load_questions(probing_path)
         output_dir = test_id_dir / "output"
+        if args.debug:
+            print(f"\n[DBG] target={test_case}/{test_id}")
+            print(f"[DBG] probing_path={probing_path}")
+            print(f"[DBG] output_dir={output_dir}")
 
         for policy in policies:
             for covariate_enabled in (False, True):
                 condition = _condition_key(policy=policy, covariate_enabled=covariate_enabled)
+                if args.debug:
+                    print(f"[DBG] condition={condition}")
 
                 for question_type, question_items in questions_by_type.items():
                     if not isinstance(question_items, list):
@@ -279,6 +299,8 @@ def main() -> int:
 
                     for question_index, item in enumerate(question_items, start=1):
                         if question_type == "abstention":
+                            if args.debug:
+                                print(f"  [DBG] skip abstention {question_type}[{question_index}]")
                             row = _null_row(
                                 test_case=test_case,
                                 test_id=test_id,
@@ -294,6 +316,8 @@ def main() -> int:
                             raise ValueError(
                                 f"Missing 'question' in {probing_path} ({question_type}[{question_index}])"
                             )
+                        if args.debug:
+                            print(f"  [DBG] start {question_type}[{question_index}]")
 
                         condition_id = (
                             f"{run_id}|{test_case}|{test_id}|{policy}|c{int(covariate_enabled)}"
@@ -328,6 +352,19 @@ def main() -> int:
                             selected_community_ids = payload.get("selected_community_ids") or []
                             assembled_context_tokens = payload.get("assembled_context_tokens", NULL)
                             assembled_context = payload.get("assembled_context") or ""
+                        if args.debug:
+                            print(
+                                "  [DBG] done "
+                                f"tokens={assembled_context_tokens} "
+                                f"selected_community_ids={selected_community_ids}"
+                            )
+                            if args.show_assembled_context:
+                                print("  [DBG] assembled_context:")
+                                print(
+                                    assembled_context
+                                    if str(assembled_context).strip()
+                                    else "  [empty]"
+                                )
 
                         row = {
                             "test_case": test_case,
