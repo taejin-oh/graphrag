@@ -24,6 +24,7 @@ import argparse
 import asyncio
 import csv
 import json
+import re
 import sys
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -52,6 +53,9 @@ RESULT_COLUMNS = [
     "assembled_context_tokens",
     "assembled_context",
 ]
+
+_DROP_COLUMNS = {"id", "title", "nid"}
+_DATA_CITATION_RE = re.compile(r"\[Data:[^\]]+\]")
 
 
 def _iter_test_targets(input_chat_root: Path, test_case_filter: str | None) -> list[tuple[str, str, Path]]:
@@ -124,6 +128,70 @@ def _extract_payload(context_data: dict[str, Any]) -> dict[str, Any] | None:
     if experimental_context.empty:
         return None
     return experimental_context.iloc[0].to_dict()
+
+
+def _clean_text(value: str) -> str:
+    cleaned = _DATA_CITATION_RE.sub("", value)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
+
+def _to_readable_assembled_context(raw_text: str) -> str:
+    if not raw_text.strip():
+        return ""
+
+    lines = raw_text.splitlines()
+    out_lines: list[str] = []
+    current_section = ""
+    header: list[str] | None = None
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("-----") and line.endswith("-----"):
+            current_section = line.strip("-").strip()
+            header = None
+            out_lines.append(f"[{current_section}]")
+            continue
+        if "|" in line:
+            parts = [p.strip() for p in line.split("|")]
+            if header is None:
+                header = parts
+                continue
+            if header and len(parts) == len(header):
+                row = {k: v for k, v in zip(header, parts, strict=True)}
+                filtered_items = [
+                    (k, _clean_text(v))
+                    for k, v in row.items()
+                    if k.lower() not in _DROP_COLUMNS and _clean_text(v)
+                ]
+                if not filtered_items:
+                    continue
+                summary = next(
+                    (v for k, v in filtered_items if k.lower() in {"summary", "content"}),
+                    None,
+                )
+                if summary:
+                    extras = [
+                        f"{k}: {v}"
+                        for k, v in filtered_items
+                        if k.lower() not in {"summary", "content"}
+                    ]
+                    if extras:
+                        out_lines.append(f"- {summary} ({'; '.join(extras)})")
+                    else:
+                        out_lines.append(f"- {summary}")
+                else:
+                    out_lines.append(
+                        "- " + "; ".join(f"{k}: {v}" for k, v in filtered_items)
+                    )
+                continue
+        cleaned_line = _clean_text(line)
+        if cleaned_line:
+            out_lines.append(cleaned_line)
+
+    return "\n".join(out_lines).strip()
 
 
 async def _run_single_query(
@@ -245,6 +313,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--community-level", type=int, default=2, help="local search community level")
     parser.add_argument("--response-type", default="Multiple Paragraphs", help="local search response_type")
     parser.add_argument("--max-tokens", type=int, default=None, help="experimental_context_max_tokens")
+    parser.add_argument(
+        "--raw-assembled-context",
+        action="store_true",
+        help="assembled_context를 원문 그대로 저장/출력",
+    )
     parser.add_argument("--debug", action="store_true", help="질문 단위 디버그 로그 출력")
     parser.add_argument(
         "--show-assembled-context",
@@ -358,6 +431,10 @@ def main() -> int:
                             selected_community_ids = payload.get("selected_community_ids") or []
                             assembled_context_tokens = payload.get("assembled_context_tokens", NULL)
                             assembled_context = payload.get("assembled_context") or ""
+                            if not args.raw_assembled_context:
+                                assembled_context = _to_readable_assembled_context(
+                                    str(assembled_context)
+                                )
                         if args.debug:
                             print(
                                 "  [DBG] done "

@@ -157,6 +157,8 @@ python scripts/run_qfs_index.py --test-case 100K --force-clean
 - `--test-ids`: 해당 케이스 내에서 실행할 test_id 목록 선택
 - `--debug`: 질문 단위 진행 로그 출력
 - `--show-assembled-context`: `--debug`와 함께 질문별 assembled_context 본문 출력
+- 기본값으로 assembled_context는 사람이 읽기 좋은 형태로 정리됨(`id`, `title`, `nid`, `[Data: ...]` 제거)
+- `--raw-assembled-context`: 원문 assembled_context를 그대로 저장/출력
 
 출력 파일:
 - `results.csv`

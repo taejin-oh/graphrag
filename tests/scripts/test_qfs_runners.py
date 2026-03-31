@@ -365,6 +365,25 @@ def test_query_iter_targets_with_test_id_filter(tmp_path: Path) -> None:
     assert [(case, test_id) for case, test_id, _ in targets] == [("case_a", "002")]
 
 
+def test_readable_assembled_context_removes_ids_and_data_markers() -> None:
+    raw = (
+        "-----Reports-----\n"
+        "id|title|summary\n"
+        "7|Community A|Alpha summary [Data: Relationships (12, 3)]\n"
+        "-----Covariates-----\n"
+        "id|entity|current_state|superseded_facts\n"
+        "1|X|active|old fact [Data: Sources (1)]\n"
+    )
+    out = run_qfs_query_and_aggregate._to_readable_assembled_context(raw)
+    assert "[Reports]" in out
+    assert "[Covariates]" in out
+    assert "id:" not in out
+    assert "title:" not in out
+    assert "[Data:" not in out
+    assert "Alpha summary" in out
+    assert "current_state: active" in out
+
+
 def test_debug_runner_timeout_exit_code(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     target_dir = tmp_path / "input_chat" / "100K" / "7"
     target_dir.mkdir(parents=True)

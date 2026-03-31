@@ -52,6 +52,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="각 질문 완료 시 assembled_context 본문까지 출력",
     )
+    parser.add_argument(
+        "--raw-assembled-context",
+        action="store_true",
+        help="assembled_context를 원문 그대로 출력",
+    )
     return parser
 
 
@@ -140,6 +145,10 @@ def main() -> int:
                                 )
                                 if args.show_assembled_context:
                                     assembled_context = str(payload.get("assembled_context") or "")
+                                    if not args.raw_assembled_context:
+                                        assembled_context = base._to_readable_assembled_context(
+                                            assembled_context
+                                        )
                                     print("  [DBG] assembled_context:")
                                     print(assembled_context if assembled_context.strip() else "  [empty]")
                         except TimeoutError:
