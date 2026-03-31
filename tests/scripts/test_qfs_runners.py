@@ -64,6 +64,7 @@ def test_run_single_index_recreates_logs_and_output(tmp_path: Path, monkeypatch:
             skip_validation=False,
             input_type="json",
             input_file_pattern=r".*\.json$",
+            force_clean=True,
         )
     )
 
@@ -78,6 +79,80 @@ def test_run_single_index_recreates_logs_and_output(tmp_path: Path, monkeypatch:
     assert overrides["input_storage"]["base_dir"] == str(test_id_dir)
     assert overrides["output_storage"]["base_dir"] == str(output_dir)
     assert overrides["reporting"]["base_dir"] == str(logs_dir)
+
+
+def test_run_single_index_without_force_clean_preserves_existing_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    test_id_dir = tmp_path / "input_chat" / "case_a" / "001"
+    logs_dir = test_id_dir / "logs"
+    output_dir = test_id_dir / "output"
+    logs_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (logs_dir / "keep.log").write_text("keep", encoding="utf-8")
+    (output_dir / "keep.txt").write_text("keep", encoding="utf-8")
+
+    monkeypatch.setattr(run_qfs_index, "load_config", lambda **_: SimpleNamespace())
+    monkeypatch.setattr(run_qfs_index, "init_loggers", lambda **_: None)
+    monkeypatch.setattr(run_qfs_index, "validate_config_names", lambda *_: None)
+
+    class _Output:
+        error = None
+
+    async def fake_build_index(**kwargs):
+        return [_Output()]
+
+    monkeypatch.setattr(run_qfs_index.api, "build_index", fake_build_index)
+
+    asyncio.run(
+        run_qfs_index._run_single_index(
+            repo_root=tmp_path,
+            test_case="case_a",
+            test_id="001",
+            test_id_dir=test_id_dir,
+            method=run_qfs_index.IndexingMethod.Standard,
+            verbose=False,
+            skip_validation=False,
+            input_type="json",
+            input_file_pattern=r".*\.json$",
+            force_clean=False,
+        )
+    )
+
+    assert (logs_dir / "keep.log").exists()
+    assert (output_dir / "keep.txt").exists()
+
+
+def test_main_resume_skips_success_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo_root = tmp_path
+    input_root = repo_root / "input_chat" / "case_a" / "001"
+    input_root.mkdir(parents=True)
+    (input_root / "case_a_001.json").write_text("{}", encoding="utf-8")
+    (input_root / "logs").mkdir(parents=True, exist_ok=True)
+    (input_root / "logs" / "index_status.json").write_text(
+        json.dumps({"status": "success", "attempt": 1}), encoding="utf-8"
+    )
+
+    monkeypatch.setattr(run_qfs_index, "REPO_ROOT", repo_root)
+    called = {"count": 0}
+
+    async def fake_run_single_index(**kwargs):
+        called["count"] += 1
+
+    monkeypatch.setattr(run_qfs_index, "_run_single_index", fake_run_single_index)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_qfs_index.py",
+            "--test-case",
+            "case_a",
+            "--resume",
+        ],
+    )
+
+    rc = run_qfs_index.main()
+    assert rc == 0
+    assert called["count"] == 0
 
 
 def test_run_single_query_sets_experimental_flags_and_extracts_payload(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

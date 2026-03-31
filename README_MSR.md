@@ -118,3 +118,28 @@ PYTHONPATH=packages/graphrag pytest -q tests/integration/query/test_experimental
 - 16조건(정책 4 × history on/off × covariate on/off)을 직접 돌릴 때는
   `experimental_condition_id`를 매 실행마다 고유하게 넣어두면 추적이 쉬워집니다.
 - 실행 중 즉시 비교는 `--show-assembled-context`, 사후 비교는 `query.log` 추출 방식이 편합니다.
+
+---
+
+## 6) QFS batch index 재시작(resume) 사용법
+
+`ltm_qfs` 브랜치의 `scripts/run_qfs_index.py`는 중간 실패 후 이어서 실행할 수 있도록 아래 옵션을 지원합니다.
+
+- `--resume`: `logs/index_status.json`이 `success`인 test_id는 건너뜀
+- `--continue-on-error`: 실패해도 다음 test_id 계속 수행
+- `--force-clean`: 실행 전 `logs/`, `output/` 삭제 후 재생성
+
+### 기본 JSON 입력(기본값)
+
+- `--input-type` 기본값: `json`
+- `--input-file-pattern` 기본값: `.*\.json$`
+
+### 예시
+
+```bash
+# 실패 지점부터 이어서, 실패해도 계속 진행
+python scripts/run_qfs_index.py --test-case 100K --resume --continue-on-error
+
+# 강제 재실행(로그/출력 초기화)
+python scripts/run_qfs_index.py --test-case 100K --force-clean
+```
