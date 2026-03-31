@@ -89,11 +89,13 @@ def _iter_test_targets(
     input_chat_root: Path,
     test_case_filter: str | None,
     ordered_test_cases: list[str] | None = None,
+    test_id_filters: list[str] | None = None,
 ) -> list[tuple[str, str, Path]]:
     if not input_chat_root.exists():
         raise FileNotFoundError(f"input_chat root not found: {input_chat_root}")
 
     targets: list[tuple[str, str, Path]] = []
+    seen_test_ids: set[str] = set()
     case_dirs = {p.name: p for p in input_chat_root.iterdir() if p.is_dir()}
     if ordered_test_cases:
         case_order = ordered_test_cases
@@ -112,15 +114,24 @@ def _iter_test_targets(
 
         for test_id_dir in sorted(p for p in test_case_dir.iterdir() if p.is_dir()):
             test_id = test_id_dir.name
+            if test_id_filters and test_id not in test_id_filters:
+                continue
             input_json = test_id_dir / f"{test_case}_{test_id}.json"
             if not input_json.exists():
                 raise FileNotFoundError(
                     f"index input json not found for {test_case}/{test_id}: {input_json}"
                 )
             targets.append((test_case, test_id, test_id_dir))
+            seen_test_ids.add(test_id)
 
     if not targets:
         raise ValueError("No test targets found under input_chat.")
+    if test_id_filters:
+        missing = [test_id for test_id in test_id_filters if test_id not in seen_test_ids]
+        if missing:
+            raise FileNotFoundError(
+                f"Requested test_id not found under selected scope: {missing}"
+            )
     return targets
 
 
@@ -205,6 +216,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="실행할 test_case 목록(입력 순서대로 진행). 예: --test-cases 100K 500K 1M",
     )
     parser.add_argument(
+        "--test-ids",
+        nargs="+",
+        default=None,
+        help="실행할 test_id 목록(미지정 시 선택된 test_case 내 전체)",
+    )
+    parser.add_argument(
         "--method",
         choices=[m.value for m in IndexingMethod],
         default=IndexingMethod.Standard.value,
@@ -250,6 +267,7 @@ def main() -> int:
         input_chat_root=input_chat_root,
         test_case_filter=args.test_case,
         ordered_test_cases=args.test_cases,
+        test_id_filters=args.test_ids,
     )
 
     print(f"[INFO] repo_root={repo_root}")

@@ -8,7 +8,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts import debug_qfs_query_runner, run_qfs_index, run_qfs_query_and_aggregate
+from scripts import (
+    debug_qfs_query_runner,
+    run_qfs_index,
+    run_qfs_query_and_aggregate,
+    run_qfs_total_pipeline,
+)
 
 
 def test_iter_test_targets_finds_expected_layout(tmp_path: Path) -> None:
@@ -41,6 +46,22 @@ def test_iter_test_targets_respects_ordered_test_cases(tmp_path: Path) -> None:
     )
 
     assert [case for case, _, _ in targets] == ["1M", "100K", "500K"]
+
+
+def test_iter_test_targets_respects_test_id_filter(tmp_path: Path) -> None:
+    root = tmp_path / "input_chat"
+    for test_id in ("001", "002", "003"):
+        test_dir = root / "case_a" / test_id
+        test_dir.mkdir(parents=True)
+        (test_dir / f"case_a_{test_id}.json").write_text("{}", encoding="utf-8")
+
+    targets = run_qfs_index._iter_test_targets(
+        root,
+        test_case_filter="case_a",
+        test_id_filters=["002"],
+    )
+
+    assert [(case, test_id) for case, test_id, _ in targets] == [("case_a", "002")]
 
 
 def test_run_single_index_recreates_logs_and_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -476,3 +497,98 @@ def test_debug_runner_can_print_assembled_context(
     assert rc == 0
     assert "assembled_context" in out
     assert "assembled-context-body" in out
+
+
+def test_total_pipeline_retries_failed_target_until_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base = tmp_path / "input_chat" / "case_a" / "001"
+    base.mkdir(parents=True)
+    (base / "case_a_001.json").write_text("{}", encoding="utf-8")
+    (base / "probing_questions").mkdir(parents=True)
+    (base / "probing_questions" / "probing_questions.json").write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(run_qfs_total_pipeline, "REPO_ROOT", tmp_path)
+    calls: list[list[str]] = []
+    query_attempt = {"count": 0}
+
+    def fake_run(cmd, capture_output, text):
+        calls.append(cmd)
+        if "run_qfs_query_and_aggregate.py" in cmd[1]:
+            query_attempt["count"] += 1
+            if query_attempt["count"] == 1:
+                return SimpleNamespace(returncode=1, stderr="boom", stdout="")
+        return SimpleNamespace(returncode=0, stderr="", stdout="[ok]")
+
+    monkeypatch.setattr(run_qfs_total_pipeline.subprocess, "run", fake_run)
+    monkeypatch.setattr(run_qfs_total_pipeline.time, "sleep", lambda _: None)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_qfs_total_pipeline.py",
+            "--input-chat-root",
+            "input_chat",
+            "--test-case",
+            "case_a",
+            "--test-ids",
+            "001",
+            "--policies",
+            "pyramid",
+            "--run-id",
+            "rtotal",
+            "--sleep-seconds",
+            "0",
+            "--max-rounds",
+            "3",
+        ],
+    )
+
+    rc = run_qfs_total_pipeline.main()
+    assert rc == 0
+    assert any("run_qfs_index.py" in cmd[1] for cmd in calls)
+    assert sum(1 for cmd in calls if "run_qfs_query_and_aggregate.py" in cmd[1]) == 2
+    progress = (tmp_path / "qfs_log" / "rtotal" / "progress_log.txt").read_text(encoding="utf-8")
+    assert "ROUND 2 START" in progress
+    assert "ALL DONE" in progress
+
+
+def test_total_pipeline_stops_on_max_rounds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    base = tmp_path / "input_chat" / "case_a" / "001"
+    base.mkdir(parents=True)
+    (base / "case_a_001.json").write_text("{}", encoding="utf-8")
+    (base / "probing_questions").mkdir(parents=True)
+    (base / "probing_questions" / "probing_questions.json").write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(run_qfs_total_pipeline, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        run_qfs_total_pipeline.subprocess,
+        "run",
+        lambda *_, **__: SimpleNamespace(returncode=1, stderr="always fail", stdout=""),
+    )
+    monkeypatch.setattr(run_qfs_total_pipeline.time, "sleep", lambda _: None)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_qfs_total_pipeline.py",
+            "--input-chat-root",
+            "input_chat",
+            "--test-case",
+            "case_a",
+            "--test-ids",
+            "001",
+            "--policies",
+            "pyramid",
+            "--run-id",
+            "rtotal_fail",
+            "--sleep-seconds",
+            "0",
+            "--max-rounds",
+            "1",
+        ],
+    )
+
+    rc = run_qfs_total_pipeline.main()
+    assert rc == 1
+    progress = (tmp_path / "qfs_log" / "rtotal_fail" / "progress_log.txt").read_text(encoding="utf-8")
+    assert "max_rounds reached" in progress

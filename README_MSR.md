@@ -186,7 +186,32 @@ python scripts/run_qfs_query_and_aggregate.py \
 
 ---
 
-## 8) query/aggregate 멈춤 지점 디버그
+## 8) Index + Query(total) 연속 실행 스크립트
+
+`scripts/run_qfs_total_pipeline.py`는 `test_case/test_id` 단위로 아래 순서를 자동 수행합니다.
+
+1. `run_qfs_index.py`
+2. `run_qfs_query_and_aggregate.py` (policy 순서대로 반복)
+
+특징:
+- 기본 policy 순서: `pyramid -> flat_ranked -> leaf_only -> leaf_then_parent_mix`
+- 각 index/query 단위 완료 후 10분(`600초`) 대기 (기본값, 마지막 완료 직후는 대기 없음)
+- 실패 대상은 라운드 종료 후 재시도하여 모두 성공할 때까지 반복
+- `--max-rounds`로 재시도 상한 설정 가능 (`0`이면 무제한)
+- 진행 로그는 `qfs_log/<run_id>/progress_log.txt`에 기록되고 콘솔에는 노란색으로 출력
+
+예시:
+
+```bash
+python scripts/run_qfs_total_pipeline.py \
+  --test-case case_a \
+  --test-ids 001 003 \
+  --run-id qfs_total_case_a
+```
+
+---
+
+## 9) query/aggregate 멈춤 지점 디버그
 
 `scripts/debug_qfs_query_runner.py`를 사용하면 질문 단위 timeout과 단계별 로그로 어디서 멈추는지 확인할 수 있습니다.
 
