@@ -137,6 +137,9 @@ PYTHONPATH=packages/graphrag pytest -q tests/integration/query/test_experimental
 ### 예시
 
 ```bash
+# 원하는 test_case를 순서대로 실행
+python scripts/run_qfs_index.py --test-cases 100K 500K 1M
+
 # 실패 지점부터 이어서, 실패해도 계속 진행
 python scripts/run_qfs_index.py --test-case 100K --resume --continue-on-error
 

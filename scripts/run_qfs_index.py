@@ -8,6 +8,9 @@ Usage examples:
   # 특정 test_case만 실행
   python scripts/run_qfs_index.py --test-case case_a
 
+  # test_case 여러 개를 지정한 순서대로 실행
+  python scripts/run_qfs_index.py --test-cases 100K 500K 1M
+
   # 실패 지점부터 이어서 실행
   python scripts/run_qfs_index.py --test-case case_a --resume --continue-on-error
 
@@ -82,15 +85,30 @@ def _write_status(
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _iter_test_targets(input_chat_root: Path, test_case_filter: str | None) -> list[tuple[str, str, Path]]:
+def _iter_test_targets(
+    input_chat_root: Path,
+    test_case_filter: str | None,
+    ordered_test_cases: list[str] | None = None,
+) -> list[tuple[str, str, Path]]:
     if not input_chat_root.exists():
         raise FileNotFoundError(f"input_chat root not found: {input_chat_root}")
 
     targets: list[tuple[str, str, Path]] = []
-    for test_case_dir in sorted(p for p in input_chat_root.iterdir() if p.is_dir()):
-        test_case = test_case_dir.name
+    case_dirs = {p.name: p for p in input_chat_root.iterdir() if p.is_dir()}
+    if ordered_test_cases:
+        case_order = ordered_test_cases
+        missing = [case for case in case_order if case not in case_dirs]
+        if missing:
+            raise FileNotFoundError(
+                f"Requested test_case directory not found under input_chat: {missing}"
+            )
+    else:
+        case_order = sorted(case_dirs.keys())
+
+    for test_case in case_order:
         if test_case_filter and test_case != test_case_filter:
             continue
+        test_case_dir = case_dirs[test_case]
 
         for test_id_dir in sorted(p for p in test_case_dir.iterdir() if p.is_dir()):
             test_id = test_id_dir.name
@@ -181,6 +199,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--test-case", default=None, help="특정 test_case만 실행")
     parser.add_argument(
+        "--test-cases",
+        nargs="+",
+        default=None,
+        help="실행할 test_case 목록(입력 순서대로 진행). 예: --test-cases 100K 500K 1M",
+    )
+    parser.add_argument(
         "--method",
         choices=[m.value for m in IndexingMethod],
         default=IndexingMethod.Standard.value,
@@ -222,7 +246,11 @@ def main() -> int:
     repo_root = REPO_ROOT
     input_chat_root = (repo_root / args.input_chat_root).resolve()
 
-    targets = _iter_test_targets(input_chat_root=input_chat_root, test_case_filter=args.test_case)
+    targets = _iter_test_targets(
+        input_chat_root=input_chat_root,
+        test_case_filter=args.test_case,
+        ordered_test_cases=args.test_cases,
+    )
 
     print(f"[INFO] repo_root={repo_root}")
     print(f"[INFO] input_chat_root={input_chat_root}")

@@ -25,6 +25,24 @@ def test_iter_test_targets_finds_expected_layout(tmp_path: Path) -> None:
     assert targets[0][2] == test_dir
 
 
+def test_iter_test_targets_respects_ordered_test_cases(tmp_path: Path) -> None:
+    root = tmp_path / "input_chat"
+    a = root / "100K" / "001"
+    b = root / "500K" / "001"
+    c = root / "1M" / "001"
+    for test_dir, case in ((a, "100K"), (b, "500K"), (c, "1M")):
+        test_dir.mkdir(parents=True)
+        (test_dir / f"{case}_001.json").write_text("{}", encoding="utf-8")
+
+    targets = run_qfs_index._iter_test_targets(
+        root,
+        test_case_filter=None,
+        ordered_test_cases=["1M", "100K", "500K"],
+    )
+
+    assert [case for case, _, _ in targets] == ["1M", "100K", "500K"]
+
+
 def test_run_single_index_recreates_logs_and_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     test_id_dir = tmp_path / "input_chat" / "case_a" / "001"
     logs_dir = test_id_dir / "logs"
