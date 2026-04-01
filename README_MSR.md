@@ -177,6 +177,18 @@ python scripts/run_qfs_index.py --test-case 100K --force-clean
 - `--max-tokens 500 1000 2000`처럼 다중 지정 시에는 동일 condition 디렉터리에
   `results_max500.*`, `results_max1000.*`, `results_max2000.*`가 함께 생성됨
 
+`results.json`/`results_maxN.json`의 각 row에는 아래 필드가 포함됩니다.
+- `selected_community_ids`: 최종 삽입된 community id 목록
+- `selected_community_context`: 선택된 community별 summary(또는 full_content) 목록
+  - 예:
+    ```json
+    "selected_community_context": [
+      "[community_id=12] ...",
+      "[community_id=7] ...",
+      "[community_id=3] ..."
+    ]
+    ```
+
 예시:
 
 ```bash

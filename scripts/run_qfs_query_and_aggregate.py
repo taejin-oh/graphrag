@@ -52,6 +52,7 @@ RESULT_COLUMNS = [
     "selected_community_ids",
     "assembled_context_tokens",
     "assembled_context",
+    "selected_community_context",
 ]
 
 _DROP_COLUMNS = {"id", "title", "nid"}
@@ -143,6 +144,48 @@ def _extract_payload(context_data: dict[str, Any]) -> dict[str, Any] | None:
     # intermediate contexts in a single query lifecycle. We want the final
     # assembled payload for the current query, so pick the last row.
     return experimental_context.iloc[-1].to_dict()
+
+
+def _build_selected_community_context(
+    *,
+    selected_community_ids: list[Any],
+    community_reports_df: Any,
+) -> list[str]:
+    if not selected_community_ids or community_reports_df is None:
+        return []
+
+    id_columns = ["community", "community_id", "id", "short_id", "human_readable_id"]
+    summary_columns = ["summary", "full_content", "content"]
+    existing_id_columns = [c for c in id_columns if c in getattr(community_reports_df, "columns", [])]
+    existing_summary_columns = [
+        c for c in summary_columns if c in getattr(community_reports_df, "columns", [])
+    ]
+    if not existing_id_columns or not existing_summary_columns:
+        return []
+
+    summary_col = existing_summary_columns[0]
+    contexts: list[str] = []
+    for community_id in selected_community_ids:
+        matched_row = None
+        for id_col in existing_id_columns:
+            matched = community_reports_df[
+                community_reports_df[id_col].astype(str) == str(community_id)
+            ]
+            if not matched.empty:
+                matched_row = matched.iloc[0]
+                break
+        if matched_row is None:
+            contexts.append(f"[community_id={community_id}]")
+            continue
+        summary_value = str(matched_row.get(summary_col, "")).strip()
+        title_value = str(matched_row.get("title", "")).strip()
+        if title_value and summary_value:
+            contexts.append(f"[community_id={community_id}] {title_value}: {summary_value}")
+        elif summary_value:
+            contexts.append(f"[community_id={community_id}] {summary_value}")
+        else:
+            contexts.append(f"[community_id={community_id}]")
+    return contexts
 
 
 def _clean_text(value: str) -> str:
@@ -277,7 +320,18 @@ async def _run_single_query(
         verbose=False,
     )
 
-    return _extract_payload(context_data)
+    payload = _extract_payload(context_data)
+    if payload is None:
+        return None
+    selected_community_ids = payload.get("selected_community_ids") or []
+    if isinstance(selected_community_ids, list):
+        payload["selected_community_context"] = _build_selected_community_context(
+            selected_community_ids=selected_community_ids,
+            community_reports_df=dfs.get("community_reports"),
+        )
+    else:
+        payload["selected_community_context"] = []
+    return payload
 
 
 def _null_row(
@@ -298,6 +352,7 @@ def _null_row(
         "selected_community_ids": NULL,
         "assembled_context_tokens": NULL,
         "assembled_context": NULL,
+        "selected_community_context": NULL,
     }
 
 
@@ -306,6 +361,9 @@ def _csv_row(row: dict[str, Any]) -> dict[str, Any]:
     value = out.get("selected_community_ids")
     if isinstance(value, list):
         out["selected_community_ids"] = json.dumps(value, ensure_ascii=False)
+    context_value = out.get("selected_community_context")
+    if isinstance(context_value, list):
+        out["selected_community_context"] = json.dumps(context_value, ensure_ascii=False)
     return out
 
 
@@ -480,10 +538,12 @@ def main() -> int:
                             selected_community_ids = []
                             assembled_context_tokens: int | str = NULL
                             assembled_context: str = NULL
+                            selected_community_context: list[str] | str = NULL
                             if payload is not None:
                                 selected_community_ids = payload.get("selected_community_ids") or []
                                 assembled_context_tokens = payload.get("assembled_context_tokens", NULL)
                                 assembled_context = payload.get("assembled_context") or ""
+                                selected_community_context = payload.get("selected_community_context") or []
                                 if not args.raw_assembled_context:
                                     assembled_context = _to_readable_assembled_context(
                                         str(assembled_context),
@@ -513,6 +573,7 @@ def main() -> int:
                                 "selected_community_ids": selected_community_ids,
                                 "assembled_context_tokens": assembled_context_tokens,
                                 "assembled_context": assembled_context,
+                                "selected_community_context": selected_community_context,
                             }
                             results_by_condition[key].append(row)
 
