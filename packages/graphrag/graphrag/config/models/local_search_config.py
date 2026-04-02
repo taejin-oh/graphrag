@@ -47,3 +47,7 @@ class LocalSearchConfig(BaseModel):
         description="The maximum tokens.",
         default=graphrag_config_defaults.local_search.max_context_tokens,
     )
+    use_community_summary: bool = Field(
+        description="Whether to include community summary (instead of full content) in local query context.",
+        default=graphrag_config_defaults.local_search.use_community_summary,
+    )

@@ -95,7 +95,6 @@ async def global_search(
     init_loggers(config=config, verbose=verbose, filename="query.log")
 
     callbacks = callbacks or []
-    full_response = ""
     context_data = {}
 
     def on_context(context: Any) -> None:
@@ -199,6 +198,7 @@ async def local_search(
     community_level: int,
     response_type: str,
     query: str,
+    context_only: bool = False,
     callbacks: list[QueryCallbacks] | None = None,
     verbose: bool = False,
 ) -> tuple[
@@ -225,7 +225,6 @@ async def local_search(
     init_loggers(config=config, verbose=verbose, filename="query.log")
 
     callbacks = callbacks or []
-    full_response = ""
     context_data = {}
 
     def on_context(context: Any) -> None:
@@ -236,23 +235,32 @@ async def local_search(
     local_callbacks.on_context = on_context
     callbacks.append(local_callbacks)
 
-    logger.debug("Executing local search query: %s", query)
-    async for chunk in local_search_streaming(
+    msg = f"Vector Store Args: {redact(config.vector_store.model_dump())}"
+    logger.debug(msg)
+    description_embedding_store = get_embedding_store(
+        config=config.vector_store,
+        embedding_name=entity_description_embedding,
+    )
+    entities_ = read_indexer_entities(entities, communities, community_level)
+    covariates_ = read_indexer_covariates(covariates) if covariates is not None else []
+    prompt = load_search_prompt(config.local_search.prompt)
+    search_engine = get_local_search_engine(
         config=config,
-        entities=entities,
-        communities=communities,
-        community_reports=community_reports,
-        text_units=text_units,
-        relationships=relationships,
-        covariates=covariates,
-        community_level=community_level,
+        reports=read_indexer_reports(community_reports, communities, community_level),
+        text_units=read_indexer_text_units(text_units),
+        entities=entities_,
+        relationships=read_indexer_relationships(relationships),
+        covariates={"claims": covariates_},
+        description_embedding_store=description_embedding_store,
         response_type=response_type,
-        query=query,
+        system_prompt=prompt,
         callbacks=callbacks,
-    ):
-        full_response += chunk
-    logger.debug("Query response: %s", truncate(full_response, 400))
-    return full_response, context_data
+    )
+    logger.debug("Executing local search query: %s", query)
+    result = await search_engine.search(query=query, context_only=context_only)
+    context_data["context_chunks"] = result.context_text
+    logger.debug("Query response: %s", truncate(str(result.response), 400))
+    return result.response, context_data
 
 
 @validate_call(config={"arbitrary_types_allowed": True})

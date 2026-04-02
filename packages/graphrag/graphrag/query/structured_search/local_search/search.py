@@ -63,6 +63,7 @@ class LocalSearch(BaseSearch[LocalContextBuilder]):
         start_time = time.time()
         search_prompt = ""
         llm_calls, prompt_tokens, output_tokens = {}, {}, {}
+        context_only = bool(kwargs.pop("context_only", False))
         context_result = self.context_builder.build_context(
             query=query,
             conversation_history=conversation_history,
@@ -72,6 +73,22 @@ class LocalSearch(BaseSearch[LocalContextBuilder]):
         llm_calls["build_context"] = context_result.llm_calls
         prompt_tokens["build_context"] = context_result.prompt_tokens
         output_tokens["build_context"] = context_result.output_tokens
+
+        if context_only:
+            for callback in self.callbacks:
+                callback.on_context(context_result.context_records)
+            return SearchResult(
+                response="",
+                context_data=context_result.context_records,
+                context_text=context_result.context_chunks,
+                completion_time=time.time() - start_time,
+                llm_calls=0,
+                prompt_tokens=0,
+                output_tokens=0,
+                llm_calls_categories=llm_calls,
+                prompt_tokens_categories=prompt_tokens,
+                output_tokens_categories=output_tokens,
+            )
 
         logger.debug("GENERATE ANSWER: %s. QUERY: %s", start_time, query)
         try:

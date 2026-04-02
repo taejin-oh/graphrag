@@ -94,6 +94,7 @@ def get_local_search_engine(
             "return_candidate_context": False,
             "embedding_vectorstore_key": EntityVectorStoreKey.ID,  # set this to EntityVectorStoreKey.TITLE if the vectorstore uses entity title as ids
             "max_context_tokens": ls_config.max_context_tokens,  # change this based on the token limit you have on your model (if you are using a model with 8k limit, a good setting could be 5000)
+            "use_community_summary": ls_config.use_community_summary,
         },
         response_type=response_type,
         callbacks=callbacks,

@@ -427,6 +427,16 @@ def _query_cli(
         "--streaming/--no-streaming",
         help="Print the response in a streaming manner.",
     ),
+    context_only: bool = typer.Option(
+        False,
+        "--context-only/--full-query",
+        help="Skip final LLM answer generation and only build/print assembled context payload.",
+    ),
+    show_assembled_context: bool = typer.Option(
+        False,
+        "--show-assembled-context/--hide-assembled-context",
+        help="Print assembled context payload fields for local query.",
+    ),
 ) -> None:
     """Query a knowledge graph index."""
     from graphrag.cli.query import (
@@ -444,6 +454,8 @@ def _query_cli(
                 community_level=community_level,
                 response_type=response_type,
                 streaming=streaming,
+                context_only=context_only,
+                show_assembled_context=show_assembled_context,
                 query=query,
                 verbose=verbose,
             )

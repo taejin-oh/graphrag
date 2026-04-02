@@ -16,6 +16,7 @@ from graphrag.callbacks.noop_query_callbacks import NoopQueryCallbacks
 from graphrag.config.load_config import load_config
 from graphrag.config.models.graph_rag_config import GraphRagConfig
 from graphrag.data_model.data_reader import DataReader
+from graphrag.tokenizer.get_tokenizer import get_tokenizer
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -116,6 +117,8 @@ def run_local_search(
     community_level: int,
     response_type: str,
     streaming: bool,
+    context_only: bool,
+    show_assembled_context: bool,
     query: str,
     verbose: bool,
 ):
@@ -153,6 +156,8 @@ def run_local_search(
     covariates: pd.DataFrame | None = dataframe_dict["covariates"]
 
     if streaming:
+        if context_only:
+            raise ValueError("context_only mode is not supported with streaming output.")
 
         async def run_streaming_search():
             full_response = ""
@@ -199,12 +204,56 @@ def run_local_search(
             community_level=community_level,
             response_type=response_type,
             query=query,
+            context_only=context_only,
             verbose=verbose,
         )
     )
-    print(response)
+    payload = _build_minimal_assembled_payload(
+        context_data=context_data,
+        tokenizer=get_tokenizer(encoding_model=config.chunking.encoding_model),
+    )
+    context_data["minimal_assembled_context"] = payload
+
+    if not context_only:
+        print(response)
+    if show_assembled_context:
+        _print_minimal_assembled_context(context_data)
 
     return response, context_data
+
+
+def _build_minimal_assembled_payload(
+    *,
+    context_data: dict[str, Any],
+    tokenizer: Any,
+) -> dict[str, Any]:
+    assembled_context = str(context_data.get("context_chunks") or "")
+    assembled_context_tokens = len(tokenizer.encode(assembled_context))
+    selected_community_ids: list[str] = []
+    reports_df = context_data.get("reports")
+    if reports_df is not None and hasattr(reports_df, "columns") and "id" in reports_df.columns:
+        selected_community_ids = [
+            str(value)
+            for value in reports_df["id"].tolist()
+            if str(value).strip() and str(value).strip().lower() != "nan"
+        ]
+    return {
+        "assembled_context": assembled_context,
+        "assembled_context_tokens": assembled_context_tokens,
+        "selected_community_ids": list(dict.fromkeys(selected_community_ids)),
+    }
+
+
+def _print_minimal_assembled_context(context_data: dict[str, Any]) -> None:
+    payload = context_data.get("minimal_assembled_context")
+    if not isinstance(payload, dict):
+        print("[assembled_context] payload not found.")
+        return
+    print("\n===== assembled_context =====")
+    print(f"selected_community_ids: {payload.get('selected_community_ids', [])}")
+    print(f"assembled_context_tokens: {payload.get('assembled_context_tokens', 0)}")
+    print(str(payload.get("assembled_context", "")))
+    print("===== /assembled_context =====")
 
 
 def run_drift_search(

@@ -267,6 +267,7 @@ class LocalSearchDefaults:
     top_k_entities: int = 10
     top_k_relationships: int = 10
     max_context_tokens: int = 12_000
+    use_community_summary: bool = False
     completion_model_id: str = DEFAULT_COMPLETION_MODEL_ID
     embedding_model_id: str = DEFAULT_EMBEDDING_MODEL_ID
 
