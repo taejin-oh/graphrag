@@ -66,6 +66,9 @@ python scripts/run_qfs_index.py \
   --retry-sleep-seconds 60
 ```
 
+- 인덱싱 시 vector store(`lancedb`)는 각 `test_id/output/lancedb` 경로에 저장됩니다.
+- 따라서 test_id 간 vector index가 서로 덮어쓰이지 않습니다.
+
 ### 2) Query + 집계(JSON만 출력)
 ```bash
 python scripts/run_qfs_query_and_aggregate.py \
@@ -75,6 +78,8 @@ python scripts/run_qfs_query_and_aggregate.py \
   --retry-count 3 \
   --retry-sleep-seconds 60
 ```
+
+- Query 시에도 동일한 `test_id/output/lancedb`를 사용합니다.
 
 - 결과 파일: `qfs_log/<run-id>/<condition>/results(_maxN).json`
 - 필수 필드:

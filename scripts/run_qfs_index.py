@@ -167,6 +167,7 @@ async def _run_single_index(
         "input_storage": {"base_dir": str(test_id_dir)},
         "output_storage": {"base_dir": str(output_dir)},
         "reporting": {"base_dir": str(logs_dir)},
+        "vector_store": {"db_uri": str(output_dir / "lancedb")},
     }
     config = load_config(root_dir=repo_root, cli_overrides=cli_overrides)
 

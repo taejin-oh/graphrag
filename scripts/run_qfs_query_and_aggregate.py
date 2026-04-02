@@ -513,7 +513,10 @@ async def _run_single_query(
     condition_id: str,
     max_tokens: int | None,
 ) -> dict[str, Any]:
-    cli_overrides = {"output_storage": {"base_dir": str(output_dir)}}
+    cli_overrides = {
+        "output_storage": {"base_dir": str(output_dir)},
+        "vector_store": {"db_uri": str(output_dir / "lancedb")},
+    }
     config = load_config(root_dir=repo_root, cli_overrides=cli_overrides)
 
     _ = (community_policy, condition_id)
