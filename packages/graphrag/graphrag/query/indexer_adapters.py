@@ -89,12 +89,21 @@ def read_indexer_reports(
         reports_df = _filter_under_community_level(reports_df, community_level)
 
     if not dynamic_community_selection:
-        # perform community level roll up
+        # perform community level roll up by selecting each entity's highest-level
+        # community and keeping only reports for those selected communities.
         nodes_df.loc[:, "community"] = nodes_df["community"].fillna(-1)
         nodes_df.loc[:, "community"] = nodes_df["community"].astype(int)
 
-        nodes_df = nodes_df.groupby(["title"]).agg({"community": "max"}).reset_index()
-        filtered_community_df = nodes_df["community"].drop_duplicates()
+        max_level_per_entity = (
+            nodes_df.groupby(["entity_ids"], as_index=False)["level"]
+            .max()
+            .rename(columns={"level": "max_level"})
+        )
+
+        nodes_df = nodes_df.merge(max_level_per_entity, on="entity_ids", how="inner")
+        filtered_community_df = nodes_df.loc[
+            nodes_df["level"] == nodes_df["max_level"], "community"
+        ].drop_duplicates()
 
         reports_df = reports_df.merge(
             filtered_community_df, on="community", how="inner"
