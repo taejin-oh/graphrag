@@ -95,6 +95,7 @@ async def global_search(
     init_loggers(config=config, verbose=verbose, filename="query.log")
 
     callbacks = callbacks or []
+    full_response = ""
     context_data = {}
 
     def on_context(context: Any) -> None:
